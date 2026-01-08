@@ -19,6 +19,7 @@ export interface Family {
 export interface Grocery {
     id: string;
     item_name: string;
+    quantity?: string;
     category: string | null;
     is_purchased: boolean;
     added_by: string | null;

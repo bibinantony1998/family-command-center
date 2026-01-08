@@ -25,6 +25,7 @@ create table profiles (
 create table groceries (
   id uuid primary key default uuid_generate_v4(),
   item_name text not null,
+  quantity text,
   category text,
   is_purchased boolean default false,
   added_by uuid references profiles(id),

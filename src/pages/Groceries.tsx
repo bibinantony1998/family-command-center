@@ -11,6 +11,7 @@ export default function Groceries() {
     const { profile } = useAuth();
     const [items, setItems] = useState<Grocery[]>([]);
     const [newItem, setNewItem] = useState('');
+    const [newQuantity, setNewQuantity] = useState('');
 
     useEffect(() => {
         if (!profile?.family_id) return;
@@ -70,11 +71,15 @@ export default function Groceries() {
         if (!newItem.trim() || !profile?.family_id) return;
 
         const pendingItem = newItem;
+        const pendingQuantity = newQuantity;
+
         setNewItem(''); // Optimistic clear
+        setNewQuantity('');
 
         const { data, error } = await supabase.from('groceries').insert([
             {
                 item_name: pendingItem,
+                quantity: pendingQuantity || null, // handle empty string as null
                 family_id: profile.family_id,
                 is_purchased: false,
                 added_by: profile.id,
@@ -86,6 +91,7 @@ export default function Groceries() {
         if (error) {
             console.error('Error adding item:', error);
             setNewItem(pendingItem); // Revert on error
+            setNewQuantity(pendingQuantity);
         } else if (data) {
             // Instant UI update
             setItems(prev => [data, ...prev]);
@@ -115,8 +121,6 @@ export default function Groceries() {
         const { error } = await supabase.from('groceries').delete().eq('id', id);
         if (error) {
             console.error("Failed to delete", error);
-            // Revert (this is hard without the original item, but for deletion we usually accept the risk or would need to keep a 'deleted' buffer. For now, simple optimistic is standard.)
-            // To be perfectly safe, we'd re-fetch, but for this app lag-free is better.
         }
     };
 
@@ -136,6 +140,12 @@ export default function Groceries() {
                     placeholder="Add milk, eggs..."
                     value={newItem}
                     onChange={(e) => setNewItem(e.target.value)}
+                    className="flex-[2]"
+                />
+                <Input
+                    placeholder="Qty (e.g. 1L)"
+                    value={newQuantity}
+                    onChange={(e) => setNewQuantity(e.target.value)}
                     className="flex-1"
                 />
                 <Button type="submit" size="icon" disabled={!newItem.trim()}>
@@ -194,6 +204,7 @@ function GroceryItem({ item, onToggle, onDelete }: { item: Grocery; onToggle: ()
                 </div>
                 <span className={`text-lg transition-all ${item.is_purchased ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
                     {item.item_name}
+                    {item.quantity && <span className="text-sm text-slate-400 ml-2 font-normal">({item.quantity})</span>}
                 </span>
             </div>
             {item.is_purchased && (

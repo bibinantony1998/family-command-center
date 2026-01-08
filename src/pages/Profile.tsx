@@ -4,21 +4,19 @@ import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
 import { Trophy, Flame, Star } from 'lucide-react';
 import type { Chore } from '../types';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 export default function Profile() {
     const { profile, signOut } = useAuth();
     const [totalPoints, setTotalPoints] = useState(0);
-    // const [completedTasks, setCompletedTasks] = useState(0);
     const [streak, setStreak] = useState(0);
     const [history, setHistory] = useState<Chore[]>([]);
-    // const [loading, setLoading] = useState(true);
+    const [graphData, setGraphData] = useState<{ day: string; points: number }[]>([]);
 
     useEffect(() => {
         if (!profile) return;
 
         const fetchStats = async () => {
-            // setLoading(true);
-
             // Fetch all completed chores for this user
             const { data } = await supabase
                 .from('chores')
@@ -30,30 +28,91 @@ export default function Profile() {
 
             if (data) {
                 setHistory(data);
-
-                // Calculate Total Points
+                
+                // 1. Total Points
                 const points = data.reduce((acc, curr) => acc + (curr.points || 0), 0);
                 setTotalPoints(points);
-                // setCompletedTasks(data.length);
 
-                // Calculate Streak (Consecutive days with at least one completed task)
-                // This is a rough estimation based on created_at since we don't track 'completed_at' yet
-                // TO DO: Add 'completed_at' to schema for accurate streaks.
-                const uniqueDays = new Set(data.map(c => new Date(c.created_at).toDateString()));
-                setStreak(uniqueDays.size);
+                // 2. Weekly Graph Data & Streak Calculation
+                processStats(data);
             }
-            // setLoading(false);
         };
 
         fetchStats();
     }, [profile]);
 
+    const processStats = (data: Chore[]) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Group points by date 'YYYY-MM-DD'
+        const pointsByDate: Record<string, number> = {};
+        const activeDates = new Set<string>();
+
+        data.forEach(chore => {
+             const date = new Date(chore.created_at);
+             const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
+             pointsByDate[dateKey] = (pointsByDate[dateKey] || 0) + (chore.points || 0);
+             activeDates.add(dateKey);
+        });
+
+        // Generate last 7 days for Graph
+        const last7Days = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(today);
+            d.setDate(d.getDate() - i);
+            const dateKey = d.toISOString().split('T')[0];
+            last7Days.push({
+                day: d.toLocaleDateString('en-US', { weekday: 'short' }), // Mon, Tue
+                points: pointsByDate[dateKey] || 0
+            });
+        }
+        setGraphData(last7Days);
+
+        // Calculate Streak (Consecutive Days backward from today)
+        let currentStreak = 0;
+        
+        // Check if we have activity today
+        const todayKey = today.toISOString().split('T')[0];
+        let checkDate = new Date(today);
+        
+        // If no activity today, check if there was activity yesterday to start the streak
+        // If there IS activity today, start counting from today.
+        // If NOT, we check yesterday. If yesterday has activity, streak is alive. If not, streak is broken (0).
+        
+        if (!activeDates.has(todayKey)) {
+             // Peek at yesterday
+             const yesterday = new Date(today);
+             yesterday.setDate(yesterday.getDate() - 1);
+             const yesterdayKey = yesterday.toISOString().split('T')[0];
+             if (!activeDates.has(yesterdayKey)) {
+                 setStreak(0);
+                 return;
+             }
+             // Start checking from yesterday
+             checkDate = yesterday;
+        }
+
+        // Count backwards
+        while (true) {
+            const key = checkDate.toISOString().split('T')[0];
+            if (activeDates.has(key)) {
+                currentStreak++;
+                checkDate.setDate(checkDate.getDate() - 1);
+            } else {
+                break;
+            }
+        }
+        
+        setStreak(currentStreak);
+    };
+
     return (
         <div className="space-y-6 pb-20">
-            <header className="flex items-center justify-between">
+             <header className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-800">My Profile</h1>
-                    <p className="text-slate-500">{profile?.display_name}</p>
+                     <h1 className="text-3xl font-bold text-slate-800">My Profile</h1>
+                     <p className="text-slate-500">{profile?.display_name}</p>
                 </div>
                 <div className="h-12 w-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl">
                     {profile?.display_name?.[0]}
@@ -77,32 +136,56 @@ export default function Profile() {
                             <Flame size={20} />
                         </div>
                         <span className="text-3xl font-bold text-slate-800">{streak}</span>
-                        <span className="text-xs text-slate-500 uppercase tracking-wide font-medium">Active Days</span>
+                        <span className="text-xs text-slate-500 uppercase tracking-wide font-medium">Day Streak</span>
                     </div>
                 </Card>
             </div>
 
+            {/* Points Graph */}
             <Card>
-                <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                    <Star size={18} className="text-yellow-500" /> Recent Achievements
-                </h3>
-                <div className="space-y-3">
-                    {history.slice(0, 5).map(chore => (
-                        <div key={chore.id} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
-                            <div>
-                                <p className="font-medium text-slate-700">{chore.title}</p>
-                                <p className="text-xs text-slate-400">{new Date(chore.created_at).toLocaleDateString()}</p>
-                            </div>
-                            <span className="text-sm font-bold text-indigo-600">+{chore.points}</span>
-                        </div>
-                    ))}
-                    {history.length === 0 && (
-                        <p className="text-slate-400 text-center italic py-4">No tasks completed yet. Go do some chores!</p>
-                    )}
+                <h3 className="font-semibold text-slate-800 mb-4">Points Activity</h3>
+                <div className="h-48 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={graphData}>
+                            <XAxis 
+                                dataKey="day" 
+                                tick={{fontSize: 12, fill: '#94a3b8'}} 
+                                axisLine={false} 
+                                tickLine={false} 
+                            />
+                            <Tooltip 
+                                cursor={{fill: '#f1f5f9'}}
+                                contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
+                            />
+                            <Bar dataKey="points" radius={[4, 4, 4, 4]}>
+                                {graphData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.points > 0 ? '#6366f1' : '#e2e8f0'} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
                 </div>
             </Card>
 
-            <button
+            <div className="space-y-3">
+                <h3 className="font-semibold text-slate-800 flex items-center gap-2 px-1">
+                    <Star size={18} className="text-yellow-500" /> Recent Achievements
+                </h3>
+                {history.slice(0, 5).map(chore => (
+                    <div key={chore.id} className="flex justify-between items-center p-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+                        <div>
+                            <p className="font-medium text-slate-700">{chore.title}</p>
+                            <p className="text-xs text-slate-400">{new Date(chore.created_at).toLocaleDateString()}</p>
+                        </div>
+                        <span className="text-sm font-bold text-indigo-600">+{chore.points}</span>
+                    </div>
+                ))}
+                {history.length === 0 && (
+                    <p className="text-slate-400 text-center italic py-4">No tasks completed yet. Go do some chores!</p>
+                )}
+            </div>
+
+            <button 
                 onClick={() => signOut()}
                 className="w-full py-3 rounded-xl bg-slate-100 text-slate-600 font-medium hover:bg-slate-200 transition-colors"
             >

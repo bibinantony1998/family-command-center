@@ -3,9 +3,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
 import type { Note, Chore } from '../types';
+import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
     const { profile } = useAuth();
+    const navigate = useNavigate();
     const [groceryCount, setGroceryCount] = useState(0);
     const [nextChore, setNextChore] = useState<Chore | null>(null);
     const [latestNote, setLatestNote] = useState<Note | null>(null);
@@ -74,7 +76,10 @@ export default function Dashboard() {
             {/* Widgets */}
             <div className="space-y-4">
                 {/* Chore Widget */}
-                <Card className="bg-gradient-to-br from-indigo-50 to-white border-indigo-100 relative overflow-hidden group">
+                <Card
+                    onClick={() => navigate('/chores')}
+                    className="bg-gradient-to-br from-indigo-50 to-white border-indigo-100 relative overflow-hidden group cursor-pointer hover:shadow-md transition-all"
+                >
                     {/* Decorative circle */}
                     <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-100 rounded-full opacity-50 blur-xl group-hover:scale-110 transition-transform" />
 
@@ -90,7 +95,10 @@ export default function Dashboard() {
                 </Card>
 
                 {/* Grocery Widget */}
-                <Card className="bg-gradient-to-br from-rose-50 to-white border-rose-100 relative overflow-hidden group">
+                <Card
+                    onClick={() => navigate('/groceries')}
+                    className="bg-gradient-to-br from-rose-50 to-white border-rose-100 relative overflow-hidden group cursor-pointer hover:shadow-md transition-all"
+                >
                     <div className="absolute -right-6 -top-6 w-24 h-24 bg-rose-100 rounded-full opacity-50 blur-xl group-hover:scale-110 transition-transform" />
 
                     <h3 className="font-semibold text-rose-900 mb-2 z-10 relative">Grocery List</h3>
@@ -101,7 +109,10 @@ export default function Dashboard() {
                 </Card>
 
                 {/* Notes Widget */}
-                <Card className="bg-gradient-to-br from-amber-50 to-white border-amber-100 relative overflow-hidden group">
+                <Card
+                    onClick={() => navigate('/notes')}
+                    className="bg-gradient-to-br from-amber-50 to-white border-amber-100 relative overflow-hidden group cursor-pointer hover:shadow-md transition-all"
+                >
                     <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-100 rounded-full opacity-50 blur-xl group-hover:scale-110 transition-transform" />
 
                     <h3 className="font-semibold text-amber-900 mb-2 z-10 relative">Latest Note</h3>

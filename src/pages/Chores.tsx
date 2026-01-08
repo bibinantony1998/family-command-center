@@ -47,10 +47,16 @@ export default function Chores() {
     }, [profile?.family_id]);
 
     const toggleChore = async (chore: Chore) => {
+        if (!profile) return;
         const isNowDone = !chore.is_completed;
 
-        // Optimistic
-        setChores(prev => prev.map(c => c.id === chore.id ? { ...c, is_completed: isNowDone } : c));
+        // Logic: If completing a task that is unassigned, claim it for the current user so they get points.
+        // If it's already assigned (to me or someone else), keep the assignment as is.
+        const shouldClaim = isNowDone && !chore.assigned_to;
+        const newAssignedTo = shouldClaim ? profile.id : chore.assigned_to;
+
+        // Optimistic UI update
+        setChores(prev => prev.map(c => c.id === chore.id ? { ...c, is_completed: isNowDone, assigned_to: newAssignedTo } : c));
 
         if (isNowDone) {
             // Check if all done
@@ -60,9 +66,17 @@ export default function Chores() {
             }
         }
 
-        const { error } = await supabase.from('chores').update({ is_completed: isNowDone }).eq('id', chore.id);
+        // Prepare DB updates
+        const updates: any = { is_completed: isNowDone };
+        if (shouldClaim) {
+            updates.assigned_to = profile.id;
+        }
+
+        const { error } = await supabase.from('chores').update(updates).eq('id', chore.id);
+
         if (error) {
-            setChores(prev => prev.map(c => c.id === chore.id ? { ...c, is_completed: !isNowDone } : c));
+            // Revert optimistic update
+            setChores(prev => prev.map(c => c.id === chore.id ? { ...c, is_completed: !isNowDone, assigned_to: chore.assigned_to } : c));
         }
     };
 
