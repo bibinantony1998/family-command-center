@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+@theme {
+  --font-sans: 'Outfit', 'Inter', sans-serif;
+
+  --color-background: #f8fafc;
+  --color-primary: #6366f1;
+  --color-primary-light: #e0e7ff;
+  --color-secondary: #f43f5e;
+  --color-secondary-light: #ffe4e6;
+  --color-accent: #14b8a6;
+  --color-accent-light: #ccfbf1;
+  --color-surface: #ffffff;
+}
+
+@layer utilities {
+  .rounded-3xl {
+    border-radius: 1.5rem;
+  }
+}
