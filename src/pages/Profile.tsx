@@ -2,22 +2,22 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
-import { Trophy, Flame, Calendar, Star } from 'lucide-react';
+import { Trophy, Flame, Star } from 'lucide-react';
 import type { Chore } from '../types';
 
 export default function Profile() {
     const { profile, signOut } = useAuth();
     const [totalPoints, setTotalPoints] = useState(0);
-    const [completedTasks, setCompletedTasks] = useState(0);
+    // const [completedTasks, setCompletedTasks] = useState(0);
     const [streak, setStreak] = useState(0);
     const [history, setHistory] = useState<Chore[]>([]);
-    const [loading, setLoading] = useState(true);
+    // const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (!profile) return;
 
         const fetchStats = async () => {
-            setLoading(true);
+            // setLoading(true);
 
             // Fetch all completed chores for this user
             const { data } = await supabase
@@ -34,7 +34,7 @@ export default function Profile() {
                 // Calculate Total Points
                 const points = data.reduce((acc, curr) => acc + (curr.points || 0), 0);
                 setTotalPoints(points);
-                setCompletedTasks(data.length);
+                // setCompletedTasks(data.length);
 
                 // Calculate Streak (Consecutive days with at least one completed task)
                 // This is a rough estimation based on created_at since we don't track 'completed_at' yet
@@ -42,7 +42,7 @@ export default function Profile() {
                 const uniqueDays = new Set(data.map(c => new Date(c.created_at).toDateString()));
                 setStreak(uniqueDays.size);
             }
-            setLoading(false);
+            // setLoading(false);
         };
 
         fetchStats();

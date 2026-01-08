@@ -9,7 +9,7 @@ export default function Dashboard() {
     const [groceryCount, setGroceryCount] = useState(0);
     const [nextChore, setNextChore] = useState<Chore | null>(null);
     const [latestNote, setLatestNote] = useState<Note | null>(null);
-    const [loading, setLoading] = useState(true);
+    // const [loading, setLoading] = useState(true);
 
     const today = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date());
 
@@ -17,7 +17,7 @@ export default function Dashboard() {
         if (!profile?.family_id) return;
 
         const fetchData = async () => {
-            setLoading(true);
+            // setLoading(true);
             try {
                 // 1. Get Grocery Count (unpurchased)
                 const { count: gCount } = await supabase
@@ -53,7 +53,7 @@ export default function Dashboard() {
             } catch (error) {
                 console.error("Error fetching dashboard data:", error);
             } finally {
-                setLoading(false);
+                // setLoading(false);
             }
         };
 
