@@ -384,6 +384,7 @@ function AddChildSection({ family }: { family: Family }) {
                 setUsername('');
                 setPassword('');
             }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (err: any) {
             setMsg('Error: ' + err.message);
         } finally {
