@@ -168,3 +168,32 @@ begin
   return new;
 end;
 $$ language plpgsql security definer;
+
+-- Game Scores Table
+create table game_scores (
+  id uuid primary key default uuid_generate_v4(),
+  game_id text not null,
+  level integer not null,
+  points integer not null,
+  played_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  profile_id uuid references profiles(id),
+  family_id uuid references families(id) not null
+);
+
+-- RLS for Game Scores
+alter table game_scores enable row level security;
+
+create policy "Family view game scores" on game_scores
+  for select using (
+    family_id = get_my_family_id()
+  );
+
+create policy "Users can insert own scores" on game_scores
+  for insert with check (
+    profile_id = auth.uid()
+  );
+
+create policy "Users can view own scores" on game_scores
+  for select using (
+    profile_id = auth.uid()
+  );

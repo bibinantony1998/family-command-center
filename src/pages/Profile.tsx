@@ -3,39 +3,53 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
 import { Trophy, Flame, Star, Copy, Users, Check } from 'lucide-react';
-import type { Chore, Family } from '../types';
+import type { Family } from '../types';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+
+interface HistoryItem {
+    id: string;
+    title: string;
+    points: number;
+    date: string;
+    type: 'chore' | 'game';
+}
 
 export default function Profile() {
     const { profile, signOut } = useAuth();
     const [totalPoints, setTotalPoints] = useState(0);
     const [streak, setStreak] = useState(0);
-    const [history, setHistory] = useState<Chore[]>([]);
+    const [history, setHistory] = useState<HistoryItem[]>([]);
     const [graphData, setGraphData] = useState<{ day: string; points: number }[]>([]);
     const [family, setFamily] = useState<Family | null>(null);
     const [copied, setCopied] = useState(false);
 
-    const processStats = (data: Chore[]) => {
+    const processStats = (data: HistoryItem[]) => {
+        // Use local time for "Today"
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const getLocalYYYYMMDD = (d: Date) => d.toLocaleDateString('en-CA'); // 'en-CA' gives YYYY-MM-DD in local time
 
-        // Group points by date 'YYYY-MM-DD'
+        const todayKey = getLocalYYYYMMDD(today);
+
+        // Group points by date 'YYYY-MM-DD' (Local Time)
         const pointsByDate: Record<string, number> = {};
         const activeDates = new Set<string>();
 
-        data.forEach(chore => {
-            const date = new Date(chore.created_at);
-            const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
-            pointsByDate[dateKey] = (pointsByDate[dateKey] || 0) + (chore.points || 0);
+        data.forEach(item => {
+            // Treat database timestamps as if they happened in local time for display purposes
+            // or just convert normally. `new Date(item.date)` converts UTC string to Local Date object.
+            const date = new Date(item.date);
+            const dateKey = getLocalYYYYMMDD(date);
+
+            pointsByDate[dateKey] = (pointsByDate[dateKey] || 0) + (item.points || 0);
             activeDates.add(dateKey);
         });
 
         // Generate last 7 days for Graph
         const last7Days = [];
         for (let i = 6; i >= 0; i--) {
-            const d = new Date(today);
-            d.setDate(d.getDate() - i);
-            const dateKey = d.toISOString().split('T')[0];
+            const d = new Date();
+            d.setDate(today.getDate() - i);
+            const dateKey = getLocalYYYYMMDD(d);
             last7Days.push({
                 day: d.toLocaleDateString('en-US', { weekday: 'short' }), // Mon, Tue
                 points: pointsByDate[dateKey] || 0
@@ -45,31 +59,40 @@ export default function Profile() {
 
         // Calculate Streak (Consecutive Days backward from today)
         let currentStreak = 0;
+        let checkDate = new Date(); // Start checking from Today locally
 
-        // Check if we have activity today
-        const todayKey = today.toISOString().split('T')[0];
-        let checkDate = new Date(today);
+        // If no activity today yet, we can check yesterday to seeing if streak is kept alive
+        // But strict streak means: Activity Today OR Yesterday (to continue).
+        // If I did something yesterday, streak is 1. If I do something today, streak becomes 2.
+        // If I did nothing yesterday, streak is broken.
 
-        // If no activity today, check if there was activity yesterday to start the streak
-        // If there IS activity today, start counting from today.
-        // If NOT, we check yesterday. If yesterday has activity, streak is alive. If not, streak is broken (0).
+        // Algorithm:
+        // 1. Check Today. If active, count ++, move to yesterday.
+        // 2. If NOT active Today, check Yesterday. If active, count ++ (start streak from 1), move to day before.
+        // 3. If NOT active Yesterday either -> Streak is 0.
 
-        if (!activeDates.has(todayKey)) {
-            // Peek at yesterday
-            const yesterday = new Date(today);
+        if (activeDates.has(todayKey)) {
+            currentStreak++;
+            checkDate.setDate(checkDate.getDate() - 1);
+        } else {
+            // Check yesterday
+            const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
-            const yesterdayKey = yesterday.toISOString().split('T')[0];
-            if (!activeDates.has(yesterdayKey)) {
+            const yesterdayKey = getLocalYYYYMMDD(yesterday);
+
+            if (activeDates.has(yesterdayKey)) {
+                currentStreak++;
+                checkDate = yesterday; // Start loop from yesterday
+                checkDate.setDate(checkDate.getDate() - 1); // Move to day before yesterday for loop
+            } else {
                 setStreak(0);
                 return;
             }
-            // Start checking from yesterday
-            checkDate = yesterday;
         }
 
-        // Count backwards
+        // Continue checking backwards
         while (true) {
-            const key = checkDate.toISOString().split('T')[0];
+            const key = getLocalYYYYMMDD(checkDate);
             if (activeDates.has(key)) {
                 currentStreak++;
                 checkDate.setDate(checkDate.getDate() - 1);
@@ -96,7 +119,7 @@ export default function Profile() {
             }
 
             // Fetch all completed chores for this user
-            const { data } = await supabase
+            const { data: choreData } = await supabase
                 .from('chores')
                 .select('*')
                 .eq('family_id', profile.family_id)
@@ -104,15 +127,44 @@ export default function Profile() {
                 .eq('is_completed', true)
                 .order('created_at', { ascending: false });
 
-            if (data) {
-                setHistory(data);
+            // Fetch game scores
+            const { data: gameData } = await supabase
+                .from('game_scores')
+                .select('*')
+                .eq('family_id', profile.family_id)
+                .eq('profile_id', profile.id)
+                .order('played_at', { ascending: false });
+
+            if (choreData || gameData) {
+                // Combine history
+                const chores = (choreData || []).map(c => ({
+                    id: c.id,
+                    title: c.title,
+                    points: c.points,
+                    date: c.created_at,
+                    type: 'chore' as const
+                }));
+                const games = (gameData || []).map(g => ({
+                    id: g.id,
+                    title: `${g.game_id === 'quick-math' ? 'Quick Math' : g.game_id === 'memory-match' ? 'Memory Match' : g.game_id} (Lvl ${g.level})`,
+                    points: g.points,
+                    date: g.played_at,
+                    type: 'game' as const
+                }));
+
+                const combinedHistory = [...chores, ...games].sort((a, b) =>
+                    new Date(b.date).getTime() - new Date(a.date).getTime()
+                );
+
+                setHistory(combinedHistory); // Note: history state type needs update to 'any' or union type locally
 
                 // 1. Total Points
-                const points = data.reduce((acc, curr) => acc + (curr.points || 0), 0);
-                setTotalPoints(points);
+                const chorePoints = (choreData || []).reduce((acc, curr) => acc + (curr.points || 0), 0);
+                const gamePoints = (gameData || []).reduce((acc, curr) => acc + (curr.points || 0), 0);
+                setTotalPoints(chorePoints + gamePoints);
 
                 // 2. Weekly Graph Data & Streak Calculation
-                processStats(data);
+                processStats(combinedHistory);
             }
         };
 
@@ -214,13 +266,16 @@ export default function Profile() {
                 <h3 className="font-semibold text-slate-800 flex items-center gap-2 px-1">
                     <Star size={18} className="text-yellow-500" /> Recent Achievements
                 </h3>
-                {history.slice(0, 5).map(chore => (
-                    <div key={chore.id} className="flex justify-between items-center p-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+                {history.slice(0, 5).map(item => (
+                    <div key={item.id} className="flex justify-between items-center p-3 bg-white rounded-xl border border-slate-100 shadow-sm">
                         <div>
-                            <p className="font-medium text-slate-700">{chore.title}</p>
-                            <p className="text-xs text-slate-400">{new Date(chore.created_at).toLocaleDateString()}</p>
+                            <p className="font-medium text-slate-700">{item.title}</p>
+                            <p className="text-xs text-slate-400">
+                                {item.type === 'game' ? 'Game • ' : ''}
+                                {new Date(item.date).toLocaleDateString()}
+                            </p>
                         </div>
-                        <span className="text-sm font-bold text-indigo-600">+{chore.points}</span>
+                        <span className="text-sm font-bold text-indigo-600">+{item.points}</span>
                     </div>
                 ))}
                 {history.length === 0 && (
