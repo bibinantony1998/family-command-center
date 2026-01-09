@@ -12,7 +12,7 @@ export interface Profile {
 export interface Family {
     id: string; // uuid
     name: string;
-    share_code: string; // or secret_key in DB
+    secret_key: string;
     created_at: string;
 }
 

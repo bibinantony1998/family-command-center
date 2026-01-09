@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
-import { Trophy, Flame, Star } from 'lucide-react';
-import type { Chore } from '../types';
+import { Trophy, Flame, Star, Copy, Users, Check } from 'lucide-react';
+import type { Chore, Family } from '../types';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 export default function Profile() {
@@ -12,34 +12,8 @@ export default function Profile() {
     const [streak, setStreak] = useState(0);
     const [history, setHistory] = useState<Chore[]>([]);
     const [graphData, setGraphData] = useState<{ day: string; points: number }[]>([]);
-
-    useEffect(() => {
-        if (!profile) return;
-
-        const fetchStats = async () => {
-            // Fetch all completed chores for this user
-            const { data } = await supabase
-                .from('chores')
-                .select('*')
-                .eq('family_id', profile.family_id)
-                .eq('assigned_to', profile.id)
-                .eq('is_completed', true)
-                .order('created_at', { ascending: false });
-
-            if (data) {
-                setHistory(data);
-                
-                // 1. Total Points
-                const points = data.reduce((acc, curr) => acc + (curr.points || 0), 0);
-                setTotalPoints(points);
-
-                // 2. Weekly Graph Data & Streak Calculation
-                processStats(data);
-            }
-        };
-
-        fetchStats();
-    }, [profile]);
+    const [family, setFamily] = useState<Family | null>(null);
+    const [copied, setCopied] = useState(false);
 
     const processStats = (data: Chore[]) => {
         const today = new Date();
@@ -50,10 +24,10 @@ export default function Profile() {
         const activeDates = new Set<string>();
 
         data.forEach(chore => {
-             const date = new Date(chore.created_at);
-             const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
-             pointsByDate[dateKey] = (pointsByDate[dateKey] || 0) + (chore.points || 0);
-             activeDates.add(dateKey);
+            const date = new Date(chore.created_at);
+            const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
+            pointsByDate[dateKey] = (pointsByDate[dateKey] || 0) + (chore.points || 0);
+            activeDates.add(dateKey);
         });
 
         // Generate last 7 days for Graph
@@ -71,26 +45,26 @@ export default function Profile() {
 
         // Calculate Streak (Consecutive Days backward from today)
         let currentStreak = 0;
-        
+
         // Check if we have activity today
         const todayKey = today.toISOString().split('T')[0];
         let checkDate = new Date(today);
-        
+
         // If no activity today, check if there was activity yesterday to start the streak
         // If there IS activity today, start counting from today.
         // If NOT, we check yesterday. If yesterday has activity, streak is alive. If not, streak is broken (0).
-        
+
         if (!activeDates.has(todayKey)) {
-             // Peek at yesterday
-             const yesterday = new Date(today);
-             yesterday.setDate(yesterday.getDate() - 1);
-             const yesterdayKey = yesterday.toISOString().split('T')[0];
-             if (!activeDates.has(yesterdayKey)) {
-                 setStreak(0);
-                 return;
-             }
-             // Start checking from yesterday
-             checkDate = yesterday;
+            // Peek at yesterday
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayKey = yesterday.toISOString().split('T')[0];
+            if (!activeDates.has(yesterdayKey)) {
+                setStreak(0);
+                return;
+            }
+            // Start checking from yesterday
+            checkDate = yesterday;
         }
 
         // Count backwards
@@ -103,21 +77,90 @@ export default function Profile() {
                 break;
             }
         }
-        
+
         setStreak(currentStreak);
+    };
+
+    useEffect(() => {
+        if (!profile) return;
+
+        const fetchStats = async () => {
+            // Fetch Family Details
+            if (profile.family_id) {
+                const { data: familyData } = await supabase
+                    .from('families')
+                    .select('*')
+                    .eq('id', profile.family_id)
+                    .single();
+                if (familyData) setFamily(familyData);
+            }
+
+            // Fetch all completed chores for this user
+            const { data } = await supabase
+                .from('chores')
+                .select('*')
+                .eq('family_id', profile.family_id)
+                .eq('assigned_to', profile.id)
+                .eq('is_completed', true)
+                .order('created_at', { ascending: false });
+
+            if (data) {
+                setHistory(data);
+
+                // 1. Total Points
+                const points = data.reduce((acc, curr) => acc + (curr.points || 0), 0);
+                setTotalPoints(points);
+
+                // 2. Weekly Graph Data & Streak Calculation
+                processStats(data);
+            }
+        };
+
+        fetchStats();
+    }, [profile]);
+
+    const copyCode = () => {
+        if (family?.secret_key) {
+            navigator.clipboard.writeText(family.secret_key);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
     };
 
     return (
         <div className="space-y-6 pb-20">
-             <header className="flex items-center justify-between">
+            <header className="flex items-center justify-between">
                 <div>
-                     <h1 className="text-3xl font-bold text-slate-800">My Profile</h1>
-                     <p className="text-slate-500">{profile?.display_name}</p>
+                    <h1 className="text-3xl font-bold text-slate-800">My Profile</h1>
+                    <p className="text-slate-500">{profile?.display_name}</p>
                 </div>
                 <div className="h-12 w-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl">
                     {profile?.display_name?.[0]}
                 </div>
             </header>
+
+            {/* Family Info Card */}
+            {/* Family Info Card */}
+            {family && (
+                <Card className="bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white border-none">
+                    <div className="flex flex-col gap-4">
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2 mb-1 opacity-90">
+                                <Users size={16} />
+                                <span className="text-sm font-medium">My Family</span>
+                            </div>
+                            <h2 className="text-2xl font-bold truncate">{family.name}</h2>
+                        </div>
+                        <div className="bg-white/20 backdrop-blur-sm p-3 rounded-xl flex items-center justify-between cursor-pointer hover:bg-white/30 transition-colors w-full" onClick={copyCode}>
+                            <div className="text-xs uppercase tracking-wider font-semibold opacity-80">Invite Code</div>
+                            <div className="text-xl font-mono font-bold flex items-center gap-2">
+                                {family.secret_key}
+                                {copied ? <Check size={16} className="text-green-300" /> : <Copy size={16} />}
+                            </div>
+                        </div>
+                    </div>
+                </Card>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
                 <Card className="bg-gradient-to-br from-yellow-50 to-orange-50 border-orange-100">
@@ -147,15 +190,15 @@ export default function Profile() {
                 <div className="h-48 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={graphData}>
-                            <XAxis 
-                                dataKey="day" 
-                                tick={{fontSize: 12, fill: '#94a3b8'}} 
-                                axisLine={false} 
-                                tickLine={false} 
+                            <XAxis
+                                dataKey="day"
+                                tick={{ fontSize: 12, fill: '#94a3b8' }}
+                                axisLine={false}
+                                tickLine={false}
                             />
-                            <Tooltip 
-                                cursor={{fill: '#f1f5f9'}}
-                                contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
+                            <Tooltip
+                                cursor={{ fill: '#f1f5f9' }}
+                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                             />
                             <Bar dataKey="points" radius={[4, 4, 4, 4]}>
                                 {graphData.map((entry, index) => (
@@ -185,7 +228,7 @@ export default function Profile() {
                 )}
             </div>
 
-            <button 
+            <button
                 onClick={() => signOut()}
                 className="w-full py-3 rounded-xl bg-slate-100 text-slate-600 font-medium hover:bg-slate-200 transition-colors"
             >
