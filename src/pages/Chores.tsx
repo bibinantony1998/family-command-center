@@ -121,9 +121,11 @@ export default function Chores() {
                 <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2">
                     <CheckCircle className="text-accent" /> Chores
                 </h1>
-                <Button size="icon" onClick={() => setIsAddModalOpen(true)}>
-                    <Plus />
-                </Button>
+                {profile?.role === 'parent' && (
+                    <Button size="icon" onClick={() => setIsAddModalOpen(true)}>
+                        <Plus />
+                    </Button>
+                )}
             </header>
 
             {/* Progress Card */}
@@ -153,9 +155,11 @@ export default function Chores() {
                 {chores.length === 0 ? (
                     <div className="text-center py-10 text-slate-400 bg-white rounded-3xl border border-slate-100 border-dashed">
                         <p>No chores assigned!</p>
-                        <Button variant="ghost" className="mt-2 text-indigo-500" onClick={() => setIsAddModalOpen(true)}>
-                            create one?
-                        </Button>
+                        {profile?.role === 'parent' && (
+                            <Button variant="ghost" className="mt-2 text-indigo-500" onClick={() => setIsAddModalOpen(true)}>
+                                create one?
+                            </Button>
+                        )}
                     </div>
                 ) : (
                     chores.map((chore) => (

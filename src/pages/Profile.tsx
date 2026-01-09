@@ -21,6 +21,7 @@ export default function Profile() {
     const [history, setHistory] = useState<HistoryItem[]>([]);
     const [graphData, setGraphData] = useState<{ day: string; points: number }[]>([]);
     const [family, setFamily] = useState<Family | null>(null);
+    const [kids, setKids] = useState<{ id: string; display_name: string; balance: number }[]>([]);
     const [copied, setCopied] = useState(false);
 
     const processStats = (data: HistoryItem[]) => {
@@ -116,6 +117,15 @@ export default function Profile() {
                     .eq('id', profile.family_id)
                     .single();
                 if (familyData) setFamily(familyData);
+
+                // Fetch Kids in Family
+                const { data: kidsData } = await supabase
+                    .from('profiles')
+                    .select('id, display_name, balance')
+                    .eq('family_id', profile.family_id)
+                    .eq('role', 'child');
+
+                if (kidsData) setKids(kidsData);
             }
 
             // Fetch all completed chores for this user
@@ -158,10 +168,9 @@ export default function Profile() {
 
                 setHistory(combinedHistory); // Note: history state type needs update to 'any' or union type locally
 
-                // 1. Total Points
-                const chorePoints = (choreData || []).reduce((acc, curr) => acc + (curr.points || 0), 0);
-                const gamePoints = (gameData || []).reduce((acc, curr) => acc + (curr.points || 0), 0);
-                setTotalPoints(chorePoints + gamePoints);
+                // 1. Total Points (Now using live Balance)
+                const { data: profileVal } = await supabase.from('profiles').select('balance').eq('id', profile.id).single();
+                setTotalPoints(profileVal?.balance || 0);
 
                 // 2. Weekly Graph Data & Streak Calculation
                 processStats(combinedHistory);
@@ -215,7 +224,34 @@ export default function Profile() {
 
             {/* Parent ONLY: Add Child Section */}
             {family && profile?.role === 'parent' && (
-                <AddChildSection family={family} />
+                <>
+                    <AddChildSection family={family} />
+
+                    {/* Active Kids List */}
+                    {kids.length > 0 && (
+                        <div className="space-y-3">
+                            <h3 className="font-semibold text-slate-800 flex items-center gap-2 px-1">
+                                <Users size={18} className="text-indigo-500" /> Active Kids
+                            </h3>
+                            <div className="grid grid-cols-1 gap-3">
+                                {kids.map(kid => (
+                                    <div key={kid.id} className="flex justify-between items-center p-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+                                        <div className="flex items-center gap-3">
+                                            <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
+                                                {kid.display_name?.[0]}
+                                            </div>
+                                            <p className="font-medium text-slate-700">{kid.display_name}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2 bg-yellow-50 px-3 py-1 rounded-full border border-yellow-100">
+                                            <Trophy size={14} className="text-yellow-600" />
+                                            <span className="text-sm font-bold text-yellow-700">{kid.balance} pts</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </>
             )}
 
             <div className="grid grid-cols-2 gap-4">
@@ -225,7 +261,7 @@ export default function Profile() {
                             <Trophy size={20} />
                         </div>
                         <span className="text-3xl font-bold text-slate-800">{totalPoints}</span>
-                        <span className="text-xs text-slate-500 uppercase tracking-wide font-medium">Total Points</span>
+                        <span className="text-xs text-slate-500 uppercase tracking-wide font-medium">Points Balance</span>
                     </div>
                 </Card>
 
@@ -316,13 +352,19 @@ function AddChildSection({ family }: { family: Family }) {
             // Create a temp client to avoid signing out the parent
             const tempClient = createClient(
                 import.meta.env.VITE_SUPABASE_URL,
-                import.meta.env.VITE_SUPABASE_ANON_KEY
+                import.meta.env.VITE_SUPABASE_ANON_KEY,
+                {
+                    auth: {
+                        persistSession: false, // Critical: Don't overwrite parent session
+                        autoRefreshToken: false,
+                        detectSessionInUrl: false
+                    }
+                }
             );
 
-            // Construct dummy email: username.secret_key@kids.fcc
-            // Remove spaces from username
+            // Construct dummy email: username@kids.fcc (Username must be globally unique)
             const cleanUser = username.replace(/\s+/g, '').toLowerCase();
-            const email = `${cleanUser}.${family.secret_key}@kids.fcc`;
+            const email = `${cleanUser}@kids.fcc`;
 
             const { data, error } = await tempClient.auth.signUp({
                 email,
@@ -338,7 +380,7 @@ function AddChildSection({ family }: { family: Family }) {
 
             if (error) throw error;
             if (data.user) {
-                setMsg(`Success! Child "${username}" created. Login with Username: ${cleanUser} and Family Code: ${family.secret_key}`);
+                setMsg(`Success! Child "${username}" created. Login with Username: ${cleanUser}`);
                 setUsername('');
                 setPassword('');
             }

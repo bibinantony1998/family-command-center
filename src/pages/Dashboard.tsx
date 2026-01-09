@@ -4,13 +4,33 @@ import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
 import type { Note, Chore } from '../types';
 import { useNavigate } from 'react-router-dom';
+import Rewards from './Rewards'; // Reuse Rewards component for Kids Dashboard
 
 export default function Dashboard() {
     const { profile } = useAuth();
     const navigate = useNavigate();
+
+    // Parent Dashboard State (Always call hooks)
     const [groceryCount, setGroceryCount] = useState(0);
     const [nextChore, setNextChore] = useState<Chore | null>(null);
     const [latestNote, setLatestNote] = useState<Note | null>(null);
+
+    // Conditional rendering for Kids Dashboard
+    if (profile?.role === 'child') {
+        return (
+            <div className="space-y-6">
+                <header className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-3xl font-bold text-slate-800">Hi, {profile.display_name}! 👋</h1>
+                        <p className="text-slate-500">Here are your rewards.</p>
+                    </div>
+                </header>
+                {/* Reuse the Rewards Component directly here as the "Home" content */}
+                <Rewards />
+            </div>
+        );
+    }
+
     // const [loading, setLoading] = useState(true);
 
     const today = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date());

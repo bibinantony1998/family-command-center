@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
@@ -12,6 +12,7 @@ export default function Rewards() {
     const { profile } = useAuth();
     const [rewards, setRewards] = useState<Reward[]>([]);
     const [redemptions, setRedemptions] = useState<Redemption[]>([]);
+    const [balance, setBalance] = useState(0);
 
     // Parent Inputs
     const [newRewardName, setNewRewardName] = useState('');
@@ -19,14 +20,7 @@ export default function Rewards() {
 
     const isParent = profile?.role === 'parent';
 
-    useEffect(() => {
-        if (!profile?.family_id) return;
-        fetchData();
-
-        // Subscription would go here for real-time updates
-    }, [profile]);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         if (!profile?.family_id) return;
 
         // Fetch Rewards Catalog
@@ -58,7 +52,19 @@ export default function Rewards() {
         const { data: redemptionsData } = await query;
         // Need to cast because Supabase join types are tricky
         if (redemptionsData) setRedemptions(redemptionsData as any);
-    };
+
+        // Fetch Balance (Kids only)
+        if (!isParent) {
+            const { data: profileData } = await supabase.from('profiles').select('balance').eq('id', profile.id).single();
+            if (profileData) setBalance(profileData.balance || 0);
+        }
+    }, [profile, isParent]);
+
+    useEffect(() => {
+        fetchData();
+
+        // Subscription would go here for real-time updates
+    }, [fetchData]);
 
     const handleAddReward = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -85,20 +91,22 @@ export default function Rewards() {
     };
 
     const handleRedeem = async (reward: Reward) => {
-        if (!profile || isParent) return; // Parents can't redeem
+        if (!profile || isParent) return;
 
-        // Check Points logic would be here, but effectively creating a request is free?
-        // Usually we check balance first. For now let's just create request.
+        // Check Balance
+        if (balance < reward.cost) {
+            alert("Not enough points!");
+            return;
+        }
 
-        const { error } = await supabase.from('redemptions').insert({
-            family_id: profile.family_id,
-            kid_id: profile.id,
-            reward_id: reward.id,
-            status: 'pending'
-        });
+        // Use RPC to Request Redemption (Deducts points atomically)
+        const { data, error } = await supabase.rpc('request_redemption', { reward_id_param: reward.id });
 
-        if (!error) {
-            alert('Request sent!');
+        if (error || (data && data.error)) {
+            console.error(error || data?.error);
+            alert('Error: ' + (error?.message || data?.error));
+        } else {
+            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
             fetchData();
         }
     };
@@ -106,33 +114,45 @@ export default function Rewards() {
     const handleUpdateStatus = async (redemptionId: string, status: 'approved' | 'rejected') => {
         if (!isParent) return;
 
-        // If approving, we should deduct points? 
-        // Or we assume points system is managed elsewhere?
-        // Let's assume we just mark it. Deduction logic is complex without transactions.
-        // Ideally: RPC function 'approve_redemption'.
-
-        // For MVP: Just update status.
-        const { error } = await supabase
-            .from('redemptions')
-            .update({ status, updated_at: new Date().toISOString() })
-            .eq('id', redemptionId);
-
-        if (!error && status === 'approved') {
-            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+        let error;
+        if (status === 'approved') {
+            const { error: rpcError } = await supabase.rpc('approve_redemption', { redemption_id_param: redemptionId });
+            error = rpcError;
+        } else {
+            const { error: rpcError } = await supabase.rpc('reject_redemption', { redemption_id_param: redemptionId });
+            error = rpcError;
         }
 
-        fetchData();
+        if (!error) {
+            if (status === 'approved') {
+                confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+            }
+            fetchData();
+        } else {
+            console.error(error);
+            alert('Action failed');
+        }
     };
 
     return (
         <div className="space-y-6 pb-20">
             <header>
-                <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2">
-                    <Trophy className="text-yellow-500" /> Rewards
-                </h1>
-                <p className="text-slate-500">
-                    {isParent ? 'Manage rewards and approve requests' : 'Redeem your hard-earned points!'}
-                </p>
+                <div className="flex justify-between items-center">
+                    <div>
+                        <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2">
+                            <Trophy className="text-yellow-500" /> Rewards
+                        </h1>
+                        <p className="text-slate-500">
+                            {isParent ? 'Manage rewards and requests' : 'Redeem your hard-earned points!'}
+                        </p>
+                    </div>
+                    {!isParent && (
+                        <div className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-xl border border-yellow-200">
+                            <p className="text-xs uppercase font-bold opacity-70">Your Balance</p>
+                            <p className="text-2xl font-bold">{balance} <span className="text-sm">pts</span></p>
+                        </div>
+                    )}
+                </div>
             </header>
 
             {/* Parent: Add Reward */}
@@ -180,10 +200,11 @@ export default function Rewards() {
                             ) : (
                                 <Button
                                     onClick={() => handleRedeem(reward)}
-                                    variant="secondary"
-                                    className="w-full mt-2 h-8 text-sm"
+                                    variant={balance >= reward.cost ? "primary" : "secondary"}
+                                    disabled={balance < reward.cost}
+                                    className={`w-full mt-2 h-8 text-sm ${balance < reward.cost ? 'opacity-50' : ''}`}
                                 >
-                                    Redeem
+                                    {balance < reward.cost ? 'Need more pts' : 'Redeem'}
                                 </Button>
                             )}
                         </Card>

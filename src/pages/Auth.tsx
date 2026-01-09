@@ -14,7 +14,6 @@ export default function Auth() {
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
     const [isKidLogin, setIsKidLogin] = useState(false);
-    const [familyCode, setFamilyCode] = useState('');
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -24,9 +23,16 @@ export default function Auth() {
 
         try {
             if (isKidLogin) {
-                // Kid Login
-                const cleanUser = email.replace(/\s+/g, '').toLowerCase(); // reusing email state for username
-                const constructedEmail = `${cleanUser}.${familyCode}@kids.fcc`;
+                // Kid Login (Username + Password only)
+                // Kid Login (Username + Password only)
+                let cleanUser = email.replace(/\s+/g, '').toLowerCase();
+
+                // If user entered full email "bob@kids.fcc", don't append it again
+                if (!cleanUser.endsWith('@kids.fcc')) {
+                    cleanUser = `${cleanUser}@kids.fcc`;
+                }
+
+                const constructedEmail = cleanUser;
                 const { error } = await supabase.auth.signInWithPassword({
                     email: constructedEmail,
                     password,
@@ -97,13 +103,6 @@ export default function Auth() {
                                 value={email} // reuse email state
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
-                            />
-                            <Input
-                                placeholder="Family Code (e.g. X8J2P)"
-                                value={familyCode}
-                                onChange={(e) => setFamilyCode(e.target.value)}
-                                required
-                                className="uppercase tracking-widest font-mono"
                             />
                         </>
                     )}

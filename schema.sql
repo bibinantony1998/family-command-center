@@ -185,14 +185,22 @@ create policy "Family delete notes" on notes
 create policy "Family view chores" on chores
   for select using (family_id = get_my_family_id());
 
-create policy "Family insert chores" on chores
-  for insert with check (family_id = get_my_family_id());
+create policy "Parents can insert chores" on chores
+  for insert with check (
+    family_id = get_my_family_id() 
+    and 
+    exists (select 1 from profiles where id = auth.uid() and role = 'parent')
+  );
 
 create policy "Family update chores" on chores
   for update using (family_id = get_my_family_id());
 
-create policy "Family delete chores" on chores
-  for delete using (family_id = get_my_family_id());
+create policy "Parents can delete chores" on chores
+  for delete using (
+    family_id = get_my_family_id() 
+    and 
+    exists (select 1 from profiles where id = auth.uid() and role = 'parent')
+  );
 
 -- GAME SCORES Policies
 create policy "Family view game scores" on game_scores
@@ -262,4 +270,96 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+
+-- 7. POINTS & REDEMPTION LOGIC
+
+-- Add Balance to Profiles (Safe update)
+create table if not exists _dummy (id int); -- just to ensure we can run do block
+do $$ 
+begin
+  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'balance') then
+    alter table profiles add column balance integer default 0;
+  end if;
+end $$;
+
+-- RPC: Request Redemption (Deducts points immediately -> "Hold")
+create or replace function request_redemption(reward_id_param uuid)
+returns json
+language plpgsql
+security definer
+as $$
+declare
+  v_cost int;
+  v_balance int;
+  v_family_id uuid;
+  v_redemption_id uuid;
+begin
+  -- 1. Get Reward Cost and Family ID
+  select cost, family_id into v_cost, v_family_id from rewards where id = reward_id_param;
+  
+  if not found then
+    return json_build_object('error', 'Reward not found');
+  end if;
+
+  -- 2. Check Balance
+  select balance into v_balance from profiles where id = auth.uid();
+  
+  if v_balance < v_cost then
+    return json_build_object('error', 'Insufficient balance');
+  end if;
+
+  -- 3. Deduct Points (Hold)
+  update profiles set balance = balance - v_cost where id = auth.uid();
+
+  -- 4. Create Redemption Record
+  insert into redemptions (family_id, kid_id, reward_id, status)
+  values (v_family_id, auth.uid(), reward_id_param, 'pending')
+  returning id into v_redemption_id;
+
+  return json_build_object('success', true, 'redemption_id', v_redemption_id);
+end;
+$$;
+
+-- RPC: Approve Redemption (Keep points deducted, just mark approved)
+create or replace function approve_redemption(redemption_id_param uuid)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  if not exists (select 1 from profiles where id = auth.uid() and role = 'parent') then
+    raise exception 'Only parents can approve';
+  end if;
+
+  update redemptions set status = 'approved', updated_at = now() where id = redemption_id_param;
+end;
+$$;
+
+-- RPC: Reject Redemption (Refund points)
+create or replace function reject_redemption(redemption_id_param uuid)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_kid_id uuid;
+  v_reward_id uuid;
+  v_cost int;
+begin
+  if not exists (select 1 from profiles where id = auth.uid() and role = 'parent') then
+    raise exception 'Only parents can reject';
+  end if;
+
+  -- Get details
+  select kid_id, reward_id into v_kid_id, v_reward_id from redemptions where id = redemption_id_param;
+  select cost into v_cost from rewards where id = v_reward_id;
+
+  -- Refund
+  update profiles set balance = balance + v_cost where id = v_kid_id;
+
+  -- Mark rejected
+  update redemptions set status = 'rejected', updated_at = now() where id = redemption_id_param;
+end;
+$$;
 
