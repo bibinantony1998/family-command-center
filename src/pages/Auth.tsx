@@ -13,6 +13,9 @@ export default function Auth() {
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+    const [isKidLogin, setIsKidLogin] = useState(false);
+    const [familyCode, setFamilyCode] = useState('');
+
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -20,13 +23,23 @@ export default function Auth() {
         setSuccessMessage(null);
 
         try {
-            if (isSignUp) {
+            if (isKidLogin) {
+                // Kid Login
+                const cleanUser = email.replace(/\s+/g, '').toLowerCase(); // reusing email state for username
+                const constructedEmail = `${cleanUser}.${familyCode}@kids.fcc`;
+                const { error } = await supabase.auth.signInWithPassword({
+                    email: constructedEmail,
+                    password,
+                });
+                if (error) throw error;
+            } else if (isSignUp) {
                 const { error, data } = await supabase.auth.signUp({
                     email,
                     password,
                     options: {
                         data: {
                             display_name: displayName,
+                            role: 'parent' // Parents sign up explicitly
                         },
                     },
                 });
@@ -58,7 +71,9 @@ export default function Auth() {
             <Card className="w-full max-w-sm space-y-6 p-8">
                 <div className="text-center">
                     <h1 className="text-2xl font-bold text-slate-800">Family Command Center</h1>
-                    <p className="text-slate-500">{isSignUp ? 'Create your account' : 'Welcome back!'}</p>
+                    <p className="text-slate-500">
+                        {isKidLogin ? 'Kid Login 🎮' : isSignUp ? 'Create Parent Account' : 'Parent Login'}
+                    </p>
                 </div>
 
                 {error && (
@@ -74,7 +89,27 @@ export default function Auth() {
                 )}
 
                 <form onSubmit={handleAuth} className="space-y-4">
-                    {isSignUp && (
+                    {/* Kid Login Fields */}
+                    {isKidLogin && (
+                        <>
+                            <Input
+                                placeholder="Username"
+                                value={email} // reuse email state
+                                onChange={(e) => setEmail(e.target.value)}
+                                required
+                            />
+                            <Input
+                                placeholder="Family Code (e.g. X8J2P)"
+                                value={familyCode}
+                                onChange={(e) => setFamilyCode(e.target.value)}
+                                required
+                                className="uppercase tracking-widest font-mono"
+                            />
+                        </>
+                    )}
+
+                    {/* Parent Sign Up Fields */}
+                    {isSignUp && !isKidLogin && (
                         <Input
                             placeholder="Your Name (e.g. Mom)"
                             value={displayName}
@@ -83,13 +118,17 @@ export default function Auth() {
                         />
                     )}
 
-                    <Input
-                        type="email"
-                        placeholder="Email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                    />
+                    {/* Standard Email Field (Parent Only) */}
+                    {!isKidLogin && (
+                        <Input
+                            type="email"
+                            placeholder="Email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            required
+                        />
+                    )}
+
                     <Input
                         type="password"
                         placeholder="Password"
@@ -98,22 +137,39 @@ export default function Auth() {
                         required
                     />
 
-                    <Button type="submit" className="w-full" isLoading={loading}>
-                        {isSignUp ? 'Sign Up' : 'Log In'}
+                    <Button type="submit" className={`w-full ${isKidLogin ? 'bg-indigo-500 hover:bg-indigo-600' : ''}`} isLoading={loading}>
+                        {isKidLogin ? 'Start Playing!' : isSignUp ? 'Sign Up' : 'Log In'}
                     </Button>
                 </form>
 
-                <div className="text-center">
+                <div className="flex flex-col gap-2 text-center text-sm">
+                    {!isKidLogin && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsSignUp(!isSignUp);
+                                setError(null);
+                                setSuccessMessage(null);
+                            }}
+                            className="text-slate-500 hover:text-slate-800"
+                        >
+                            {isSignUp ? 'Already have an account? Log in' : "Don't have an account? Sign up"}
+                        </button>
+                    )}
+
                     <button
                         type="button"
                         onClick={() => {
-                            setIsSignUp(!isSignUp);
+                            setIsKidLogin(!isKidLogin);
+                            setIsSignUp(false);
+                            setEmail('');
+                            setPassword('');
                             setError(null);
                             setSuccessMessage(null);
                         }}
-                        className="text-sm text-indigo-600 hover:underline"
+                        className="font-medium text-indigo-600 hover:underline"
                     >
-                        {isSignUp ? 'Already have an account? Log in' : "Don't have an account? Sign up"}
+                        {isKidLogin ? 'Switch to Parent Login' : 'Switch to Kid Login 🧸'}
                     </button>
                 </div>
             </Card>

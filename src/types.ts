@@ -45,3 +45,28 @@ export interface Chore {
     family_id: string;
     created_at: string;
 }
+
+export interface Reward {
+    id: string;
+    family_id: string;
+    name: string;
+    cost: number;
+    icon: string;
+    created_at: string;
+}
+
+export type RedemptionStatus = 'pending' | 'approved' | 'rejected' | 'fulfilled';
+
+export interface Redemption {
+    id: string;
+    family_id: string;
+    kid_id: string;
+    reward_id: string;
+    status: RedemptionStatus;
+    redeemed_at?: string; // Optional if pending? No, usually null.
+    created_at: string;
+    updated_at: string;
+    // Joins
+    rewards?: Reward;
+    profiles?: Profile;
+}

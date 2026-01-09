@@ -1,8 +1,13 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { Home, ShoppingCart, StickyNote, CheckCircle, User, Gamepad2 } from 'lucide-react';
+import { Home, ShoppingCart, StickyNote, CheckCircle, User, Gamepad2, Trophy } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
+import { useAuth } from '../../contexts/AuthContext';
+
 export function AppLayout() {
+    const { profile } = useAuth();
+    const isParent = profile?.role === 'parent';
+
     return (
         <div className="flex h-[100dvh] flex-col bg-slate-50">
             <main className="flex-1 overflow-y-auto pb-24">
@@ -14,10 +19,17 @@ export function AppLayout() {
             <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white px-6 pb-6 pt-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                 <div className="mx-auto flex max-w-md justify-between">
                     <NavItem to="/" icon={<Home size={24} />} label="Home" />
-                    <NavItem to="/groceries" icon={<ShoppingCart size={24} />} label="Shop" />
-                    <NavItem to="/notes" icon={<StickyNote size={24} />} label="Notes" />
+
+                    {isParent && (
+                        <>
+                            <NavItem to="/groceries" icon={<ShoppingCart size={24} />} label="Shop" />
+                            <NavItem to="/notes" icon={<StickyNote size={24} />} label="Notes" />
+                        </>
+                    )}
+
                     <NavItem to="/chores" icon={<CheckCircle size={24} />} label="Chores" />
                     <NavItem to="/games" icon={<Gamepad2 size={24} />} label="Games" />
+                    <NavItem to="/rewards" icon={<Trophy size={24} />} label="Rewards" />
                     <NavItem to="/profile" icon={<User size={24} />} label="Profile" />
                 </div>
             </nav>

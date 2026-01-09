@@ -20,6 +20,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [profile, setProfile] = useState<Profile | null>(null);
     const [loading, setLoading] = useState(true);
 
+    // DEBUG: Verify new code is loaded
+    useEffect(() => { console.log("AUTH CONTEXT - SELF HEALING V2 LOADED"); }, []);
+
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
@@ -56,6 +59,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 .single();
 
             if (error) {
+                // Self-Healing: If profile is missing (PGRST116), create it.
+                if (error.code === 'PGRST116') {
+                    console.log("Profile missing, creating default profile...");
+
+                    // Retrieve user metadata to get display name
+                    const { data: { user } } = await supabase.auth.getUser();
+                    const displayName = user?.user_metadata?.display_name || 'New User';
+                    const role = user?.user_metadata?.role || 'parent';
+                    const familyId = user?.user_metadata?.family_id || null;
+
+                    const { data: newProfile, error: insertError } = await supabase
+                        .from('profiles')
+                        .insert({
+                            id: userId,
+                            display_name: displayName,
+                            role: role,
+                            family_id: familyId
+                        })
+                        .select()
+                        .single();
+
+                    if (insertError) {
+                        console.error('Failed to auto-create profile:', insertError);
+                        throw insertError;
+                    }
+
+                    setProfile(newProfile);
+                    return;
+                }
+
                 console.error('Error fetching profile:', error);
                 throw error;
             } else {
@@ -63,7 +96,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
         } catch (err) {
             console.error('Error in fetchProfile:', err);
-            throw err; // Re-throw to be caught by the caller (JoinFamily)
+            // Don't re-throw, just let profile be null so user can potentially try again or we can handle it in UI
+            // throwing err here causes the Auth component to crash or show error state loop
         } finally {
             setLoading(false);
         }

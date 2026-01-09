@@ -22,6 +22,7 @@ import SchulteTable from './pages/games/SchulteTable';
 import NumberMemory from './pages/games/NumberMemory';
 import WhackAMole from './pages/games/WhackAMole';
 import Profile from './pages/Profile';
+import Rewards from './pages/Rewards';
 
 
 export default function App() {
@@ -70,7 +71,9 @@ function AuthenticatedAppContent() {
         <Route path="games/pattern-memory" element={<PatternMemory />} />
         <Route path="games/schulte-table" element={<SchulteTable />} />
         <Route path="games/number-memory" element={<NumberMemory />} />
+        <Route path="games/number-memory" element={<NumberMemory />} />
         <Route path="games/whack-a-mole" element={<WhackAMole />} />
+        <Route path="rewards" element={<Rewards />} />
         <Route path="profile" element={<Profile />} />
       </Route>
     </Routes>

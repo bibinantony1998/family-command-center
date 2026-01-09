@@ -192,7 +192,6 @@ export default function Profile() {
             </header>
 
             {/* Family Info Card */}
-            {/* Family Info Card */}
             {family && (
                 <Card className="bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white border-none">
                     <div className="flex flex-col gap-4">
@@ -212,6 +211,11 @@ export default function Profile() {
                         </div>
                     </div>
                 </Card>
+            )}
+
+            {/* Parent ONLY: Add Child Section */}
+            {family && profile?.role === 'parent' && (
+                <AddChildSection family={family} />
             )}
 
             <div className="grid grid-cols-2 gap-4">
@@ -278,17 +282,110 @@ export default function Profile() {
                         <span className="text-sm font-bold text-indigo-600">+{item.points}</span>
                     </div>
                 ))}
-                {history.length === 0 && (
-                    <p className="text-slate-400 text-center italic py-4">No tasks completed yet. Go do some chores!</p>
-                )}
             </div>
 
             <button
                 onClick={() => signOut()}
                 className="w-full py-3 rounded-xl bg-slate-100 text-slate-600 font-medium hover:bg-slate-200 transition-colors"
+                title="Sign Out"
             >
                 Sign Out
             </button>
         </div>
+    );
+}
+
+import { UserPlus } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
+import { Input } from '../components/ui/Input';
+import { Button } from '../components/ui/Button';
+
+function AddChildSection({ family }: { family: Family }) {
+    const [isOpen, setIsOpen] = useState(false);
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [msg, setMsg] = useState('');
+
+    const handleCreateChild = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setMsg('');
+
+        try {
+            // Create a temp client to avoid signing out the parent
+            const tempClient = createClient(
+                import.meta.env.VITE_SUPABASE_URL,
+                import.meta.env.VITE_SUPABASE_ANON_KEY
+            );
+
+            // Construct dummy email: username.secret_key@kids.fcc
+            // Remove spaces from username
+            const cleanUser = username.replace(/\s+/g, '').toLowerCase();
+            const email = `${cleanUser}.${family.secret_key}@kids.fcc`;
+
+            const { data, error } = await tempClient.auth.signUp({
+                email,
+                password,
+                options: {
+                    data: {
+                        display_name: username,
+                        role: 'child', // Crucial
+                        family_id: family.id
+                    }
+                }
+            });
+
+            if (error) throw error;
+            if (data.user) {
+                setMsg(`Success! Child "${username}" created. Login with Username: ${cleanUser} and Family Code: ${family.secret_key}`);
+                setUsername('');
+                setPassword('');
+            }
+        } catch (err: any) {
+            setMsg('Error: ' + err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!isOpen) {
+        return (
+            <Card onClick={() => setIsOpen(true)} className="p-4 flex items-center gap-3 cursor-pointer hover:bg-slate-50 transition-colors border-dashed border-2 border-slate-200 shadow-none">
+                <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                    <UserPlus size={20} />
+                </div>
+                <div>
+                    <h3 className="font-semibold text-slate-700">Add Child Account</h3>
+                    <p className="text-xs text-slate-400">Create a restricted account for your kid</p>
+                </div>
+            </Card>
+        );
+    }
+
+    return (
+        <Card className="p-4 bg-slate-50 border-slate-200">
+            <h3 className="font-semibold text-slate-800 mb-2">Create Child Account</h3>
+            <form onSubmit={handleCreateChild} className="space-y-3">
+                <Input
+                    placeholder="Child's Name (e.g. Timmy)"
+                    value={username}
+                    onChange={e => setUsername(e.target.value)}
+                    required
+                />
+                <Input
+                    type="password"
+                    placeholder="Set Password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    required
+                />
+                {msg && <p className="text-xs p-2 bg-white rounded border border-slate-200 text-slate-600">{msg}</p>}
+                <div className="flex gap-2">
+                    <Button type="submit" isLoading={loading} className="flex-1">Create Account</Button>
+                    <Button type="button" variant="secondary" onClick={() => setIsOpen(false)}>Cancel</Button>
+                </div>
+            </form>
+        </Card>
     );
 }

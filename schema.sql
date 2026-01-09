@@ -1,17 +1,35 @@
--- Create tables and RLS policies
+-- FAMILY COMMAND CENTER - DATABASE SCHEMA
+-- Run this script in the Supabase SQL Editor to initialize the database.
 
--- Enable UUID extension
+-- 1. RESET (Safety: Drop existing objects to ensure clean state)
+drop trigger if exists on_auth_user_created on auth.users;
+drop function if exists public.handle_new_user() cascade;
+drop function if exists get_my_family_id() cascade;
+
+drop table if exists redemptions cascade;
+drop table if exists rewards cascade;
+drop table if exists game_scores cascade;
+drop table if exists chores cascade;
+drop table if exists notes cascade;
+drop table if exists groceries cascade;
+drop table if exists profiles cascade;
+drop table if exists families cascade;
+
+-- 2. EXTENSIONS
 create extension if not exists "uuid-ossp";
 
--- Families Table
+-- 3. TABLES
+
+-- Families
 create table families (
   id uuid primary key default uuid_generate_v4(),
   name text not null,
   secret_key text unique not null,
+  created_by uuid references auth.users default auth.uid(),
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Profiles Table (Linked to auth.users)
+-- Profiles (Linked to auth.users)
 create table profiles (
   id uuid references auth.users not null primary key,
   display_name text,
@@ -21,7 +39,7 @@ create table profiles (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Groceries Table
+-- Groceries
 create table groceries (
   id uuid primary key default uuid_generate_v4(),
   item_name text not null,
@@ -33,7 +51,7 @@ create table groceries (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Notes Table (Bulletins)
+-- Notes
 create table notes (
   id uuid primary key default uuid_generate_v4(),
   content text not null,
@@ -43,7 +61,7 @@ create table notes (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Chores Table
+-- Chores
 create table chores (
   id uuid primary key default uuid_generate_v4(),
   title text not null,
@@ -54,122 +72,7 @@ create table chores (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Row Level Security (RLS)
-
-alter table families enable row level security;
-alter table profiles enable row level security;
-alter table groceries enable row level security;
-alter table notes enable row level security;
-alter table chores enable row level security;
-
--- Policies
-
--- Helper function to get family_id safely (prevents recursion)
-create or replace function get_my_family_id()
-returns uuid
-language sql
-security definer
-stable
-as $$
-  select family_id from profiles where id = auth.uid();
-$$;
-
--- Profiles: Users can view their own profile and profiles in their family
-create policy "Users can view family profiles" on profiles
-  for select using (
-    auth.uid() = id or 
-    family_id = get_my_family_id()
-  );
-  
-create policy "Users can update own profile" on profiles
-  for update using (auth.uid() = id);
-
-create policy "Users can insert own profile" on profiles
-  for insert with check (auth.uid() = id);
-
--- Families: 
-create policy "Users can view own family" on families
-  for select using (
-    id = get_my_family_id()
-  );
-
-create policy "Users can create families" on families
-  for insert with check (auth.role() = 'authenticated');
-
--- Groceries: View/Edit if in same family
-create policy "Family view groceries" on groceries
-  for select using (
-    family_id = get_my_family_id()
-  );
-
-create policy "Family insert groceries" on groceries
-  for insert with check (
-    family_id = get_my_family_id()
-  );
-
-create policy "Family update groceries" on groceries
-  for update using (
-    family_id = get_my_family_id()
-  );
-  
-create policy "Family delete groceries" on groceries
-  for delete using (
-    family_id = get_my_family_id()
-  );
-
--- Notes
-create policy "Family view notes" on notes
-  for select using (
-    family_id = get_my_family_id()
-  );
-
-create policy "Family insert notes" on notes
-  for insert with check (
-    family_id = get_my_family_id()
-  );
-
-create policy "Family update notes" on notes
-  for update using (
-    family_id = get_my_family_id()
-  );
-
-create policy "Family delete notes" on notes
-  for delete using (
-    family_id = get_my_family_id()
-  );
-
--- Chores
-create policy "Family view chores" on chores
-  for select using (
-    family_id = get_my_family_id()
-  );
-
-create policy "Family insert chores" on chores
-  for insert with check (
-    family_id = get_my_family_id()
-  );
-
-create policy "Family update chores" on chores
-  for update using (
-    family_id = get_my_family_id()
-  );
-
-create policy "Family delete chores" on chores
-  for delete using (
-    family_id = get_my_family_id()
-  );
-
--- Trigger to create profile on signup
-create or replace function public.handle_new_user() 
-returns trigger as $$
-begin
-  insert into public.profiles (id, display_name, role)
-  values (new.id, new.raw_user_meta_data->>'display_name', 'parent');
-  return new;
-end;
-$$ language plpgsql security definer;
-
--- Game Scores Table
+-- Game Scores
 create table game_scores (
   id uuid primary key default uuid_generate_v4(),
   game_id text not null,
@@ -180,20 +83,183 @@ create table game_scores (
   family_id uuid references families(id) not null
 );
 
--- RLS for Game Scores
-alter table game_scores enable row level security;
+-- Rewards
+create table rewards (
+  id uuid primary key default uuid_generate_v4(),
+  family_id uuid references families(id) not null,
+  name text not null,
+  cost integer not null check (cost > 0),
+  icon text not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
 
-create policy "Family view game scores" on game_scores
+-- Redemptions
+create table redemptions (
+  id uuid primary key default uuid_generate_v4(),
+  family_id uuid references families(id) not null,
+  kid_id uuid references profiles(id) not null,
+  reward_id uuid references rewards(id) not null,
+  status text not null check (status in ('pending', 'approved', 'rejected', 'fulfilled')) default 'pending',
+  redeemed_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+
+-- 4. ROW LEVEL SECURITY (RLS)
+
+alter table families enable row level security;
+alter table profiles enable row level security;
+alter table groceries enable row level security;
+alter table notes enable row level security;
+alter table chores enable row level security;
+alter table game_scores enable row level security;
+alter table rewards enable row level security;
+alter table redemptions enable row level security;
+
+-- 5. FUNCTIONS & POLICIES
+
+-- Helper: Get Family ID
+create or replace function get_my_family_id()
+returns uuid
+language sql
+security definer
+stable
+as $$
+  select family_id from profiles where id = auth.uid();
+$$;
+
+-- PROFILES Policies
+create policy "Users can view own profile" on profiles
+  for select using (auth.uid() = id);
+
+create policy "Users can update own profile" on profiles
+  for update using (auth.uid() = id);
+
+create policy "Users can insert own profile" on profiles
+  for insert with check (auth.uid() = id);
+
+create policy "Users can view family members" on profiles
   for select using (
     family_id = get_my_family_id()
   );
 
-create policy "Users can insert own scores" on game_scores
-  for insert with check (
-    profile_id = auth.uid()
+-- FAMILIES Policies
+create policy "Users can view own family" on families
+  for select using (
+    id = get_my_family_id() 
+    or 
+    created_by = auth.uid()
   );
 
+create policy "Users can create families" on families
+  for insert with check (auth.role() = 'authenticated');
+
+-- GROCERIES Policies
+create policy "Family view groceries" on groceries
+  for select using (family_id = get_my_family_id());
+
+create policy "Family insert groceries" on groceries
+  for insert with check (family_id = get_my_family_id());
+
+create policy "Family update groceries" on groceries
+  for update using (family_id = get_my_family_id());
+  
+create policy "Family delete groceries" on groceries
+  for delete using (family_id = get_my_family_id());
+
+-- NOTES Policies
+create policy "Family view notes" on notes
+  for select using (family_id = get_my_family_id());
+
+create policy "Family insert notes" on notes
+  for insert with check (family_id = get_my_family_id());
+
+create policy "Family update notes" on notes
+  for update using (family_id = get_my_family_id());
+
+create policy "Family delete notes" on notes
+  for delete using (family_id = get_my_family_id());
+
+-- CHORES Policies
+create policy "Family view chores" on chores
+  for select using (family_id = get_my_family_id());
+
+create policy "Family insert chores" on chores
+  for insert with check (family_id = get_my_family_id());
+
+create policy "Family update chores" on chores
+  for update using (family_id = get_my_family_id());
+
+create policy "Family delete chores" on chores
+  for delete using (family_id = get_my_family_id());
+
+-- GAME SCORES Policies
+create policy "Family view game scores" on game_scores
+  for select using (family_id = get_my_family_id());
+
+create policy "Users can insert own scores" on game_scores
+  for insert with check (profile_id = auth.uid());
+
 create policy "Users can view own scores" on game_scores
-  for select using (
-    profile_id = auth.uid()
+  for select using (profile_id = auth.uid());
+
+-- REWARDS Policies
+create policy "Family view rewards" on rewards
+  for select using (family_id = get_my_family_id());
+
+create policy "Parents manage rewards" on rewards
+  for all using (
+    family_id = get_my_family_id() and 
+    exists (select 1 from profiles where id = auth.uid() and role = 'parent')
   );
+
+-- REDEMPTIONS Policies
+create policy "Parents view all redemptions" on redemptions
+  for select using (
+    family_id = get_my_family_id() and
+    exists (select 1 from profiles where id = auth.uid() and role = 'parent')
+  );
+
+create policy "Kids view own redemptions" on redemptions
+  for select using (id = auth.uid() or kid_id = auth.uid());
+
+create policy "Kids can request redemption" on redemptions
+  for insert with check (
+    kid_id = auth.uid() and
+    exists (select 1 from profiles where id = auth.uid() and role = 'child')
+  );
+
+create policy "Parents can update redemption status" on redemptions
+  for update using (
+    family_id = get_my_family_id() and
+    exists (select 1 from profiles where id = auth.uid() and role = 'parent')
+  );
+
+-- 6. AUTH TRIGGER
+-- Automatically creates a profile entry when a user signs up.
+create or replace function public.handle_new_user() 
+returns trigger as $$
+begin
+  insert into public.profiles (id, display_name, role, family_id)
+  values (
+    new.id, 
+    coalesce(new.raw_user_meta_data->>'display_name', 'New User'),
+    coalesce(new.raw_user_meta_data->>'role', 'parent'),
+    (new.raw_user_meta_data->>'family_id')::uuid
+  )
+  on conflict (id) do update
+  set 
+    display_name = excluded.display_name,
+    role = excluded.role,
+    family_id = excluded.family_id;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+-- Trigger Binding
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
