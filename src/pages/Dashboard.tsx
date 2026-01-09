@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
-import type { Note, Chore } from '../types';
+import type { Note, Chore, Redemption } from '../types';
 import { useNavigate } from 'react-router-dom';
+import { Gift, Check, X } from 'lucide-react';
+import confetti from 'canvas-confetti';
 import Rewards from './Rewards'; // Reuse Rewards component for Kids Dashboard
 
 export default function Dashboard() {
@@ -14,22 +16,31 @@ export default function Dashboard() {
     const [groceryCount, setGroceryCount] = useState(0);
     const [nextChore, setNextChore] = useState<Chore | null>(null);
     const [latestNote, setLatestNote] = useState<Note | null>(null);
+    const [pendingRedemptions, setPendingRedemptions] = useState<Redemption[]>([]);
 
-    // Conditional rendering for Kids Dashboard
-    if (profile?.role === 'child') {
-        return (
-            <div className="space-y-6">
-                <header className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-3xl font-bold text-slate-800">Hi, {profile.display_name}! 👋</h1>
-                        <p className="text-slate-500">Here are your rewards.</p>
-                    </div>
-                </header>
-                {/* Reuse the Rewards Component directly here as the "Home" content */}
-                <Rewards />
-            </div>
-        );
-    }
+    const handleUpdateStatus = async (redemptionId: string, status: 'approved' | 'rejected') => {
+        if (profile?.role !== 'parent') return;
+
+        let error;
+        if (status === 'approved') {
+            const { error: rpcError } = await supabase.rpc('approve_redemption', { redemption_id_param: redemptionId });
+            error = rpcError;
+        } else {
+            const { error: rpcError } = await supabase.rpc('reject_redemption', { redemption_id_param: redemptionId });
+            error = rpcError;
+        }
+
+        if (!error) {
+            if (status === 'approved') {
+                confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+            }
+            // Refresh data locally
+            setPendingRedemptions(prev => prev.filter(r => r.id !== redemptionId));
+        } else {
+            console.error(error);
+            alert('Action failed');
+        }
+    };
 
     // const [loading, setLoading] = useState(true);
 
@@ -72,6 +83,20 @@ export default function Dashboard() {
 
                 if (noteData) setLatestNote(noteData);
 
+                // 4. Get Pending Redemptions
+                const { data: redemptionData } = await supabase
+                    .from('redemptions')
+                    .select(`
+                        *,
+                        rewards (name, cost),
+                        profiles:kid_id (display_name)
+                    `)
+                    .eq('family_id', profile.family_id)
+                    .eq('status', 'pending')
+                    .order('created_at', { ascending: false });
+
+                if (redemptionData) setPendingRedemptions(redemptionData as unknown as Redemption[]);
+
             } catch (error) {
                 console.error("Error fetching dashboard data:", error);
             } finally {
@@ -84,6 +109,22 @@ export default function Dashboard() {
         // Optional: subscribe to refresh dashboard data, but for now simple fetch on mount is fine.
     }, [profile?.family_id]);
 
+    // Conditional rendering for Kids Dashboard (MOVED HERE to satisfy Hook Rules)
+    if (profile?.role === 'child') {
+        return (
+            <div className="space-y-6">
+                <header className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-3xl font-bold text-slate-800">Hi, {profile.display_name}! 👋</h1>
+                        <p className="text-slate-500">Here are your rewards.</p>
+                    </div>
+                </header>
+                {/* Reuse the Rewards Component directly here as the "Home" content */}
+                <Rewards />
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6 pb-20">
             <header>
@@ -95,6 +136,47 @@ export default function Dashboard() {
 
             {/* Widgets */}
             <div className="space-y-4">
+                {/* Pending Requests Widget - Shows up if there are requests */}
+                {pendingRedemptions.length > 0 && (
+                    <Card className="bg-gradient-to-br from-purple-50 to-white border-purple-100">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Gift className="text-purple-600" size={20} />
+                            <h3 className="font-semibold text-purple-900">Pending Requests</h3>
+                            <span className="bg-purple-200 text-purple-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                                {pendingRedemptions.length}
+                            </span>
+                        </div>
+                        <div className="space-y-3">
+                            {pendingRedemptions.map(r => (
+                                <div key={r.id} className="bg-white/60 backdrop-blur border border-purple-100 rounded-xl p-3 flex items-center justify-between">
+                                    <div>
+                                        <p className="font-bold text-slate-800 text-sm">{r.rewards?.name}</p>
+                                        <p className="text-xs text-slate-500">
+                                            For <span className="font-medium text-purple-700">{r.profiles?.display_name}</span> • {r.rewards?.cost} pts
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleUpdateStatus(r.id, 'rejected')}
+                                            className="h-8 w-8 flex items-center justify-center rounded-full bg-red-50 text-red-500 hover:bg-red-100"
+                                            title="Reject"
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleUpdateStatus(r.id, 'approved')}
+                                            className="h-8 w-8 flex items-center justify-center rounded-full bg-green-50 text-green-500 hover:bg-green-100"
+                                            title="Approve"
+                                        >
+                                            <Check size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                )}
+
                 {/* Chore Widget */}
                 <Card
                     onClick={() => navigate('/chores')}
