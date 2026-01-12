@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Ale
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Reward } from '../../types/schema';
+// ... imports
 import { Gift, Heart, Star, Gamepad2, Ticket, Pizza, IceCream, Plus, Trash2 } from 'lucide-react-native';
 import { AddRewardModal } from '../../components/rewards/AddRewardModal';
 import { Card } from '../../components/ui/Card';
@@ -18,11 +19,13 @@ const ICONS: Record<string, any> = {
 };
 
 export default function RewardsScreen() {
+    // ... context
     const { profile } = useAuth();
     const [rewards, setRewards] = useState<Reward[]>([]);
     const [refreshing, setRefreshing] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
+    // ... fetchRewards, etc. (unchanged)
     const fetchRewards = async () => {
         if (!profile?.family_id) return;
         const { data } = await supabase
@@ -81,8 +84,6 @@ export default function RewardsScreen() {
                         Alert.alert('Error', error.message);
                     } else {
                         Alert.alert('Success', 'Request sent to parents!');
-                        // Ideally refresh profile balance here
-                        // trigger profile refresh via context
                     }
                 }
             }
@@ -103,6 +104,15 @@ export default function RewardsScreen() {
                 </View>
                 <Text style={styles.cost} numberOfLines={1}>{item.cost}</Text>
                 <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+
+                {profile?.role === 'child' && (
+                    <TouchableOpacity
+                        style={styles.redeemBtn}
+                        onPress={() => redeemReward(item)}
+                    >
+                        <Text style={styles.redeemBtnText}>Redeem</Text>
+                    </TouchableOpacity>
+                )}
             </TouchableOpacity>
         );
     };
@@ -132,6 +142,7 @@ export default function RewardsScreen() {
                 contentContainerStyle={styles.list}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await fetchRewards(); setRefreshing(false); }} />}
                 ListEmptyComponent={<Text style={styles.emptyText}>No rewards yet!</Text>}
+                style={{ flex: 1 }}
             />
 
             <AddRewardModal
@@ -164,5 +175,15 @@ const styles = StyleSheet.create({
     iconBox: { marginBottom: 16, backgroundColor: '#f5f3ff', padding: 12, borderRadius: 20 },
     cost: { fontSize: 24, fontWeight: 'bold', color: '#7c3aed', marginBottom: 4 },
     name: { fontSize: 14, fontWeight: '600', color: '#4b5563', textAlign: 'center' },
-    emptyText: { textAlign: 'center', marginTop: 40, color: '#94a3b8' }
+    emptyText: { textAlign: 'center', marginTop: 40, color: '#94a3b8' },
+    historySection: { marginTop: 24, paddingBottom: 40 },
+    sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#334155', marginBottom: 12 },
+    historyItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: 12, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#f1f5f9' },
+    historyName: { fontSize: 16, fontWeight: '600', color: '#1e293b' },
+    historyUser: { color: '#64748b', fontWeight: '400' },
+    historyDate: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
+    statusBadge: { fontSize: 12, fontWeight: 'bold', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, overflow: 'hidden', textTransform: 'uppercase' },
+    actionBtn: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+    redeemBtn: { marginTop: 8, backgroundColor: '#8b5cf6', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 12 },
+    redeemBtnText: { color: 'white', fontSize: 12, fontWeight: 'bold' }
 });

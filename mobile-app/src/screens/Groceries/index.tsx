@@ -78,6 +78,7 @@ export default function GroceriesScreen() {
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await fetchItems(); setRefreshing(false); }} />}
                 contentContainerStyle={styles.list}
                 ListEmptyComponent={<View style={styles.emptyContainer}><ShoppingCart size={48} color="#e2e8f0" /><Text style={styles.emptyText}>Basket is empty!</Text></View>}
+                style={{ flex: 1 }}
                 renderItem={({ item }) => (
                     <View style={styles.itemWrapper}>
                         <TouchableOpacity

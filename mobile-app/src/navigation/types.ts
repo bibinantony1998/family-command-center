@@ -33,4 +33,5 @@ export type MainTabParamList = {
     Groceries: undefined;
     Notes: undefined;
     Games: undefined;
+    Menu: undefined;
 };

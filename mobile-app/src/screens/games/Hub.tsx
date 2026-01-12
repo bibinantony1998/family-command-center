@@ -29,7 +29,7 @@ export default function GamesHubScreen() {
         const Icon = item.icon;
         return (
             <TouchableOpacity
-                style={[styles.item, { backgroundColor: item.bg }]}
+                style={styles.item} // Removed dynamic bg
                 onPress={() => navigation.navigate(item.id as any)}
             >
                 <Icon size={32} color={item.color} />
@@ -52,6 +52,7 @@ export default function GamesHubScreen() {
                 numColumns={2}
                 columnWrapperStyle={{ gap: 16 }}
                 contentContainerStyle={styles.list}
+                style={{ flex: 1 }}
             />
         </View>
     );
@@ -66,7 +67,8 @@ const styles = StyleSheet.create({
     item: {
         flex: 1, aspectRatio: 1, borderRadius: 24, padding: 16,
         justifyContent: 'center', alignItems: 'center', marginBottom: 16,
-        shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 2
+        backgroundColor: 'white', // Uniform white background
+        shadowColor: '#64748b', shadowOpacity: 0.1, shadowRadius: 8, elevation: 3, shadowOffset: { width: 0, height: 4 },
     },
-    name: { marginTop: 12, fontWeight: 'bold', fontSize: 14, textAlign: 'center' }
+    name: { marginTop: 12, fontWeight: 'bold', fontSize: 14, textAlign: 'center', color: '#1e293b' }
 });

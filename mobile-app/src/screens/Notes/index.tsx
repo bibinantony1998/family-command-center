@@ -107,6 +107,7 @@ export default function NotesScreen() {
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await fetchNotes(); setRefreshing(false); }} />}
                 renderItem={renderItem}
                 ListEmptyComponent={<Text style={styles.emptyText}>No notes yet. Post something!</Text>}
+                style={{ flex: 1 }}
             />
 
             <Modal visible={isModalOpen} transparent animationType="slide">

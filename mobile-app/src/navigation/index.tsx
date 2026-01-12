@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import LoginScreen from '../screens/auth/Login';
 import RegisterScreen from '../screens/auth/Register';
 import JoinFamilyScreen from '../screens/auth/JoinFamily';
+import SplashScreen from '../screens/SplashScreen';
 import MainTabNavigator from './MainTabNavigator';
 import { RootStackParamList } from './types';
 
@@ -24,13 +25,17 @@ function AuthNavigator() {
 
 export default function RootNavigator() {
     const { session, profile, loading } = useAuth();
+    const [minSplashTime, setMinSplashTime] = React.useState(true);
 
-    if (loading) {
-        return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#6366f1" />
-            </View>
-        );
+    React.useEffect(() => {
+        const timer = setTimeout(() => {
+            setMinSplashTime(false);
+        }, 2000); // Show splash for at least 2 seconds
+        return () => clearTimeout(timer);
+    }, []);
+
+    if (loading || minSplashTime) {
+        return <SplashScreen />;
     }
 
     return (

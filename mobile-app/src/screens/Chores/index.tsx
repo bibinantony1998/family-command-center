@@ -129,6 +129,7 @@ export default function ChoresScreen() {
                 contentContainerStyle={styles.list}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await fetchChores(); setRefreshing(false); }} />}
                 ListEmptyComponent={<Text style={styles.emptyText}>No chores yet!</Text>}
+                style={{ flex: 1 }}
             />
 
             <AddChoreModal
