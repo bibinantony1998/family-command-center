@@ -85,6 +85,9 @@ android {
         versionCode 1
         versionName "1.0"
     }
+    buildFeatures {
+        prefab true
+    }
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -104,6 +107,13 @@ android {
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
+    }
+    packagingOptions {
+        pickFirst '**/libhermes.so'
+        pickFirst '**/libhermes_executor.so'
+        pickFirst '**/libjscexecutor.so'
+        pickFirst '**/libc++_shared.so'
+        pickFirst '**/libfbjni.so'
     }
 }
 
