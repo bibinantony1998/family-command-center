@@ -6,6 +6,7 @@ import { Input } from '../../components/ui/Input';
 import { useNavigation } from '@react-navigation/native';
 
 export default function LoginScreen() {
+    const navigation = useNavigation<any>();
     const [isKidLogin, setIsKidLogin] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -79,9 +80,15 @@ export default function LoginScreen() {
                 </View>
 
                 <View style={styles.footer}>
-                    <TouchableOpacity onPress={() => setIsKidLogin(!isKidLogin)}>
+                    <TouchableOpacity onPress={() => setIsKidLogin(!isKidLogin)} style={styles.switchButton}>
                         <Text style={styles.switchText}>
                             {isKidLogin ? 'Switch to Parent Login' : 'Switch to Kid Login 🧸'}
+                        </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity onPress={() => navigation.navigate('Register')} style={styles.registerButton}>
+                        <Text style={styles.linkText}>
+                            Don't have an account? <Text style={styles.linkTextBold}>Sign Up</Text>
                         </Text>
                     </TouchableOpacity>
                 </View>
@@ -138,5 +145,19 @@ const styles = StyleSheet.create({
         color: '#6366f1',
         fontWeight: '600',
         fontSize: 15,
+    },
+    switchButton: {
+        marginBottom: 24,
+    },
+    registerButton: {
+        padding: 8,
+    },
+    linkText: {
+        color: '#64748b',
+        fontSize: 14,
+    },
+    linkTextBold: {
+        color: '#6366f1',
+        fontWeight: '600',
     },
 });
