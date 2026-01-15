@@ -30,7 +30,11 @@ export default function ChoresScreen() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'chores', filter: `family_id=eq.${profile?.family_id}` },
                 (payload) => {
                     if (payload.eventType === 'INSERT') {
-                        setChores(prev => [payload.new as Chore, ...prev]);
+                        const newChore = payload.new as Chore;
+                        setChores(prev => {
+                            if (prev.some(c => c.id === newChore.id)) return prev;
+                            return [newChore, ...prev];
+                        });
                     }
                     if (payload.eventType === 'UPDATE') {
                         setChores(prev => prev.map(c => c.id === payload.new.id ? payload.new as Chore : c));
@@ -78,10 +82,15 @@ export default function ChoresScreen() {
 
     const handleAddChore = async (title: string, points: number) => {
         if (!profile?.family_id) return;
-        const { error } = await supabase.from('chores').insert([{
+        const { data, error } = await supabase.from('chores').insert([{
             title, points, family_id: profile.family_id
-        }]);
+        }]).select().single();
+
         if (error) throw error;
+
+        if (data) {
+            setChores(prev => [data as Chore, ...prev]);
+        }
     };
 
     const renderItem = ({ item }: { item: Chore }) => (
