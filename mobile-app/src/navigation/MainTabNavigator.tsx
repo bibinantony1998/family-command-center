@@ -16,7 +16,10 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 import { useAuth } from '../context/AuthContext';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 export default function MainTabNavigator() {
+    const insets = useSafeAreaInsets();
     const { profile } = useAuth();
     const isChild = profile?.role === 'child';
 
@@ -31,8 +34,8 @@ export default function MainTabNavigator() {
                     borderTopColor: '#e2e8f0',
                     elevation: 8,
                     backgroundColor: 'white',
-                    height: 80, // Taller bar for better touch targets
-                    paddingBottom: 20,
+                    height: 60 + (insets.bottom > 0 ? insets.bottom : 20), // Dynamic height
+                    paddingBottom: insets.bottom > 0 ? insets.bottom : 20, // Safe area padding
                 },
                 tabBarLabelStyle: {
                     fontSize: 10,

@@ -363,3 +363,12 @@ begin
 end;
 $$;
 
+-- 8. TEMPORARY FIXES
+-- Allow public read of families table to fix "Invalid Code" error on join.
+create policy "Temp_Public_Read_Families"
+on families
+as permissive
+for select
+to authenticated
+using (true);
+
