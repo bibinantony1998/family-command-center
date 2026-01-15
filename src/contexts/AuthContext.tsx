@@ -7,6 +7,7 @@ interface AuthContextType {
     session: Session | null;
     user: User | null;
     profile: Profile | null;
+    family: any | null; // Added family
     loading: boolean;
     signOut: () => Promise<void>;
     refreshProfile: () => Promise<void>;
@@ -18,10 +19,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
     const [profile, setProfile] = useState<Profile | null>(null);
+    const [family, setFamily] = useState<any | null>(null); // Added family state
     const [loading, setLoading] = useState(true);
 
     // DEBUG: Verify new code is loaded
-    useEffect(() => { console.log("AUTH CONTEXT - SELF HEALING V2 LOADED"); }, []);
+    useEffect(() => { console.log("AUTH CONTEXT - FAMILY CURRENCY LOADED"); }, []);
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -43,6 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 fetchProfile(session.user.id).catch(console.error);
             } else {
                 setProfile(null);
+                setFamily(null);
                 setLoading(false);
             }
         });
@@ -59,11 +62,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 .single();
 
             if (error) {
-                // Self-Healing: If profile is missing (PGRST116), create it.
+                // Self-Healing
                 if (error.code === 'PGRST116') {
-                    console.log("Profile missing, creating default profile...");
+                    // ... existing create logic ...
+                    // (Omitting full recreation logic here for brevity in replace, but ideally should be kept. 
+                    // Since I am replacing the whole function, I must check if I can keep it or if I should just use the existing logic.)
+                    // Actually, I will just modify the SELECT in fetchProfile to also get family? No, family is a separate table, profile has family_id.
 
-                    // Retrieve user metadata to get display name
+                    // RE-INSERTING THE EXISTING LOGIC PROPERLY:
+                    console.log("Profile missing, creating default profile...");
                     const { data: { user } } = await supabase.auth.getUser();
                     const displayName = user?.user_metadata?.display_name || 'New User';
                     const role = user?.user_metadata?.role || 'parent';
@@ -80,24 +87,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         .select()
                         .single();
 
-                    if (insertError) {
-                        console.error('Failed to auto-create profile:', insertError);
-                        throw insertError;
-                    }
-
+                    if (insertError) throw insertError;
                     setProfile(newProfile);
+
+                    if (newProfile.family_id) {
+                        const { data: familyData } = await supabase.from('families').select('*').eq('id', newProfile.family_id).single();
+                        setFamily(familyData);
+                    }
                     return;
                 }
-
-                console.error('Error fetching profile:', error);
                 throw error;
             } else {
                 setProfile(data);
+                if (data.family_id) {
+                    const { data: familyData } = await supabase.from('families').select('*').eq('id', data.family_id).single();
+                    setFamily(familyData);
+                }
             }
         } catch (err) {
             console.error('Error in fetchProfile:', err);
-            // Don't re-throw, just let profile be null so user can potentially try again or we can handle it in UI
-            // throwing err here causes the Auth component to crash or show error state loop
         } finally {
             setLoading(false);
         }
@@ -106,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const signOut = async () => {
         await supabase.auth.signOut();
         setProfile(null);
+        setFamily(null);
         setUser(null);
         setSession(null);
     };
@@ -117,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     return (
-        <AuthContext.Provider value={{ session, user, profile, loading, signOut, refreshProfile }}>
+        <AuthContext.Provider value={{ session, user, profile, family, loading, signOut, refreshProfile }}>
             {children}
         </AuthContext.Provider>
     );

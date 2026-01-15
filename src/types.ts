@@ -13,6 +13,7 @@ export interface Family {
     id: string; // uuid
     name: string;
     secret_key: string;
+    currency?: string;
     created_at: string;
 }
 

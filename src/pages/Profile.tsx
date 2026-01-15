@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
-import { Trophy, Flame, Star, Copy, Users, Check } from 'lucide-react';
+import { Trophy, Flame, Star, Copy, Users, Check, Edit2 } from 'lucide-react';
 import type { Family } from '../types';
+import { calculateBalances, type ExpenseSplit, type Settlement } from '../lib/expense-utils';
+import { Toast, type ToastType } from '../components/ui/Toast';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 interface HistoryItem {
@@ -15,7 +17,7 @@ interface HistoryItem {
 }
 
 export default function Profile() {
-    const { profile, signOut } = useAuth();
+    const { profile, signOut, refreshProfile } = useAuth();
     const [totalPoints, setTotalPoints] = useState(0);
     const [streak, setStreak] = useState(0);
     const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -23,6 +25,7 @@ export default function Profile() {
     const [family, setFamily] = useState<Family | null>(null);
     const [kids, setKids] = useState<{ id: string; display_name: string; balance: number }[]>([]);
     const [copied, setCopied] = useState(false);
+    const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
 
     const processStats = (data: HistoryItem[]) => {
         // Use local time for "Today"
@@ -211,12 +214,86 @@ export default function Profile() {
                             </div>
                             <h2 className="text-2xl font-bold truncate">{family.name}</h2>
                         </div>
-                        <div className="bg-white/20 backdrop-blur-sm p-3 rounded-xl flex items-center justify-between cursor-pointer hover:bg-white/30 transition-colors w-full" onClick={copyCode}>
-                            <div className="text-xs uppercase tracking-wider font-semibold opacity-80">Invite Code</div>
-                            <div className="text-xl font-mono font-bold flex items-center gap-2">
-                                {family.secret_key}
-                                {copied ? <Check size={16} className="text-green-300" /> : <Copy size={16} />}
+
+                        <div className="flex gap-3">
+                            {/* Invite Code */}
+                            <div className="bg-white/20 backdrop-blur-sm p-3 rounded-xl flex-1 flex items-center justify-between cursor-pointer hover:bg-white/30 transition-colors" onClick={copyCode}>
+                                <div className="text-xs uppercase tracking-wider font-semibold opacity-80">Invite Code</div>
+                                <div className="text-xl font-mono font-bold flex items-center gap-2">
+                                    {family.secret_key}
+                                    {copied ? <Check size={16} className="text-green-300" /> : <Copy size={16} />}
+                                </div>
                             </div>
+
+                            {/* Currency Selector (Parent Only) */}
+                            {profile?.role === 'parent' && (
+                                <div className="bg-white/20 backdrop-blur-sm px-3 py-1 rounded-xl flex flex-col justify-center min-w-[80px] hover:bg-white/30 transition-colors relative group">
+                                    <div className="flex items-center gap-1 opacity-80 mb-0.5">
+                                        <label className="text-[9px] uppercase tracking-wider font-semibold">Currency</label>
+                                        <Edit2 size={8} className="text-white opacity-50 group-hover:opacity-100 transition-opacity" />
+                                    </div>
+                                    <select
+                                        value={family.currency || 'INR'}
+                                        onChange={async (e) => {
+                                            const newCurrency = e.target.value;
+
+                                            // Check for existing unsettled debts
+                                            const { data: expenses } = await supabase.from('expenses').select('*').eq('family_id', family.id);
+                                            const { data: settlements } = await supabase.from('settlements').select('*').eq('family_id', family.id);
+
+                                            // 1. If no expenses, safe to change.
+                                            // 2. If expenses exist, check if balances are cleared.
+
+                                            if (expenses && expenses.length > 0) {
+                                                const expenseIds = expenses.map(e => e.id);
+                                                const { data: splits } = await supabase.from('expense_splits').select('*').in('expense_id', expenseIds);
+
+                                                if (splits && settlements) {
+                                                    const balances = calculateBalances(
+                                                        expenses.map(e => ({ id: e.id, paid_by: e.paid_by, amount: e.amount })),
+                                                        splits as ExpenseSplit[],
+                                                        settlements as Settlement[]
+                                                    );
+                                                    // Check if any balance is significantly non-zero (debt exists)
+                                                    const hasDebt = balances.some(b => Math.abs(b.amount) > 0.01);
+
+                                                    if (hasDebt) {
+                                                        setToast({ message: "Cannot change currency: There are unsettled debts. Please settle all balances to zero first.", type: 'error' });
+                                                        e.target.value = family.currency || 'INR';
+                                                        return;
+                                                    }
+                                                }
+                                            }
+
+                                            // Proceed with update
+                                            try {
+                                                // Optimistic update local
+                                                const oldCurrency = family.currency;
+                                                setFamily(prev => prev ? { ...prev, currency: newCurrency } : null);
+
+                                                const { error: updateError } = await supabase.from('families').update({ currency: newCurrency }).eq('id', family.id);
+
+                                                if (updateError) {
+                                                    // Revert
+                                                    setFamily(prev => prev ? { ...prev, currency: oldCurrency } : null);
+                                                    throw updateError;
+                                                }
+                                                // Refresh to be sure (and update global context)
+                                                await refreshProfile();
+                                                setToast({ message: "Currency updated successfully", type: 'success' });
+                                            } catch (err) {
+                                                console.error(err);
+                                                setToast({ message: "Failed to update currency", type: 'error' });
+                                            }
+                                        }}
+                                        className="bg-transparent text-white font-mono font-bold text-lg outline-none border-none p-0 cursor-pointer appearance-none focus:ring-0"
+                                    >
+                                        {['INR', 'USD', 'EUR', 'GBP', 'CAD', 'AUD'].map(c => (
+                                            <option key={c} value={c} className="text-slate-800">{c}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </Card>
@@ -327,6 +404,8 @@ export default function Profile() {
             >
                 Sign Out
             </button>
+
+            {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
         </div>
     );
 }

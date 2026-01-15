@@ -26,6 +26,7 @@ create table families (
   name text not null,
   secret_key text unique not null,
   created_by uuid references auth.users default auth.uid(),
+  currency text default 'INR',
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -372,3 +373,109 @@ for select
 to authenticated
 using (true);
 
+
+-- 9. EXPENSE SPLITTING
+create table expenses (
+  id uuid primary key default uuid_generate_v4(),
+  description text not null,
+  amount numeric(10,2) not null check (amount > 0),
+  paid_by uuid references profiles(id) not null,
+  date timestamp with time zone default timezone('utc'::text, now()) not null,
+  category text,
+  family_id uuid references families(id) not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create table expense_splits (
+  id uuid primary key default uuid_generate_v4(),
+  expense_id uuid references expenses(id) on delete cascade not null,
+  profile_id uuid references profiles(id) not null,
+  amount numeric(10,2) not null check (amount >= 0),
+  percentage numeric(5,2), -- Optional, for percentage splits
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create table settlements (
+  id uuid primary key default uuid_generate_v4(),
+  payer_id uuid references profiles(id) not null,
+  receiver_id uuid references profiles(id) not null,
+  amount numeric(10,2) not null check (amount > 0),
+  date timestamp with time zone default timezone('utc'::text, now()) not null,
+  family_id uuid references families(id) not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- EXPENSES Policies
+alter table expenses enable row level security;
+
+create policy "Family view expenses" on expenses
+  for select using (family_id = get_my_family_id());
+
+create policy "Family insert expenses" on expenses
+  for insert with check (family_id = get_my_family_id());
+
+create policy "Family update expenses" on expenses
+  for update using (family_id = get_my_family_id());
+
+create policy "Family delete expenses" on expenses
+  for delete using (family_id = get_my_family_id());
+
+-- EXPENSE SPLITS Policies
+alter table expense_splits enable row level security;
+
+create policy "Family view splits" on expense_splits
+  for select using (
+    exists (
+      select 1 from expenses 
+      where expenses.id = expense_splits.expense_id 
+      and expenses.family_id = get_my_family_id()
+    )
+  );
+
+create policy "Family insert splits" on expense_splits
+  for insert with check (
+    exists (
+      select 1 from expenses 
+      where expenses.id = expense_splits.expense_id 
+      and expenses.family_id = get_my_family_id()
+    )
+  );
+
+-- SETTLEMENTS Policies
+alter table settlements enable row level security;
+
+create policy "Family view settlements" on settlements
+  for select using (family_id = get_my_family_id());
+
+create policy "Family insert settlements" on settlements
+  for insert with check (family_id = get_my_family_id());
+
+create policy "Family update settlements" on settlements
+  for update using (family_id = get_my_family_id());
+
+create policy "Family delete settlements" on settlements
+  for delete using (family_id = get_my_family_id());
+
+-- 10. NOTIFICATIONS
+create table notifications (
+  id uuid primary key default uuid_generate_v4(),
+  family_id uuid references families(id) not null,
+  recipient_id uuid references profiles(id) not null,
+  sender_id uuid references profiles(id) not null,
+  type text not null check (type in ('settle_up_reminder')),
+  message text,
+  is_read boolean default false,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- NOTIFICATIONS Policies
+alter table notifications enable row level security;
+
+create policy "Family view notifications" on notifications
+  for select using (family_id = get_my_family_id());
+
+create policy "Users can insert notifications" on notifications
+  for insert with check (family_id = get_my_family_id() and sender_id = auth.uid());
+
+create policy "Recipients can update notifications" on notifications
+  for update using (recipient_id = auth.uid());

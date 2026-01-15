@@ -23,8 +23,10 @@ import NumberMemory from './pages/games/NumberMemory';
 import WhackAMole from './pages/games/WhackAMole';
 import Profile from './pages/Profile';
 import Rewards from './pages/Rewards';
-
-
+import Expenses from './pages/Expenses';
+import AddExpense from './pages/AddExpense';
+import SettleUp from './pages/SettleUp';
+import ExpenseReports from './pages/ExpenseReports';
 export default function App() {
   return (
     <AuthProvider>
@@ -75,6 +77,10 @@ function AuthenticatedAppContent() {
         <Route path="games/whack-a-mole" element={<WhackAMole />} />
         <Route path="rewards" element={<Rewards />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="expenses" element={<Expenses />} />
+        <Route path="expenses/add" element={<AddExpense />} />
+        <Route path="expenses/settle" element={<SettleUp />} />
+        <Route path="expenses/reports" element={<ExpenseReports />} />
       </Route>
     </Routes>
   );

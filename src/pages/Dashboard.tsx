@@ -4,9 +4,19 @@ import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
 import type { Note, Chore, Redemption } from '../types';
 import { useNavigate } from 'react-router-dom';
-import { Gift, Check, X } from 'lucide-react';
+import { Gift, Check, X, Bell } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import Rewards from './Rewards'; // Reuse Rewards component for Kids Dashboard
+
+interface Notification {
+    id: string;
+    type: string;
+    message: string;
+    sender_id: string;
+    is_read: boolean;
+    created_at: string;
+    profiles?: { display_name: string };
+}
 
 export default function Dashboard() {
     const { profile } = useAuth();
@@ -17,6 +27,14 @@ export default function Dashboard() {
     const [nextChore, setNextChore] = useState<Chore | null>(null);
     const [latestNote, setLatestNote] = useState<Note | null>(null);
     const [pendingRedemptions, setPendingRedemptions] = useState<Redemption[]>([]);
+    const [notifications, setNotifications] = useState<Notification[]>([]);
+
+    const handleDismissNotification = async (id: string) => {
+        const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+        if (!error) {
+            setNotifications(prev => prev.filter(n => n.id !== id));
+        }
+    };
 
     const handleUpdateStatus = async (redemptionId: string, status: 'approved' | 'rejected') => {
         if (profile?.role !== 'parent') return;
@@ -104,7 +122,23 @@ export default function Dashboard() {
             }
         };
 
+        const fetchNotifications = async () => {
+            const { data } = await supabase
+                .from('notifications')
+                .select(`
+                    *,
+                    profiles:sender_id (display_name)
+                `)
+                .eq('family_id', profile.family_id)
+                .eq('recipient_id', profile.id)
+                .eq('is_read', false)
+                .order('created_at', { ascending: false });
+
+            if (data) setNotifications(data as any);
+        };
+
         fetchData();
+        fetchNotifications();
 
         // Optional: subscribe to refresh dashboard data, but for now simple fetch on mount is fine.
     }, [profile?.family_id]);
@@ -135,7 +169,40 @@ export default function Dashboard() {
             </header>
 
             {/* Widgets */}
+            {/* Widgets */}
             <div className="space-y-4">
+                {/* Notifications Widget */}
+                {notifications.length > 0 && (
+                    <Card className="bg-gradient-to-br from-indigo-50 to-white border-indigo-100">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Bell className="text-indigo-600" size={20} />
+                            <h3 className="font-semibold text-indigo-900">Notifications</h3>
+                        </div>
+                        <div className="space-y-3">
+                            {notifications.map(n => (
+                                <div key={n.id} className="bg-white/60 backdrop-blur border border-indigo-100 rounded-xl p-3 flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                                            <Bell size={14} />
+                                        </div>
+                                        <div>
+                                            <p className="font-medium text-slate-800 text-sm">{n.message}</p>
+                                            <p className="text-xs text-slate-500">From {n.profiles?.display_name}</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleDismissNotification(n.id)}
+                                        className="h-8 w-8 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                        title="Dismiss"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                )}
+
                 {/* Pending Requests Widget - Shows up if there are requests */}
                 {pendingRedemptions.length > 0 && (
                     <Card className="bg-gradient-to-br from-purple-50 to-white border-purple-100">

@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { Home, ShoppingCart, StickyNote, CheckCircle, User, Gamepad2, Trophy } from 'lucide-react';
+import { Home, ShoppingCart, StickyNote, CheckCircle, User, Gamepad2, Trophy, Banknote } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 import { useAuth } from '../../contexts/AuthContext';
@@ -27,6 +27,7 @@ export function AppLayout() {
                         </>
                     )}
 
+                    <NavItem to="/expenses" icon={<Banknote size={24} />} label="Split" />
                     <NavItem to="/chores" icon={<CheckCircle size={24} />} label="Chores" />
                     <NavItem to="/games" icon={<Gamepad2 size={24} />} label="Games" />
                     <NavItem to="/rewards" icon={<Trophy size={24} />} label="Rewards" />
