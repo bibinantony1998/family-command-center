@@ -24,7 +24,7 @@ function AuthNavigator() {
 }
 
 export default function RootNavigator() {
-    const { session, profile, loading } = useAuth();
+    const { session, family, loading } = useAuth();
     const [minSplashTime, setMinSplashTime] = React.useState(true);
 
     React.useEffect(() => {
@@ -43,7 +43,7 @@ export default function RootNavigator() {
             <Stack.Navigator screenOptions={{ headerShown: false }}>
                 {!session ? (
                     <Stack.Screen name="Auth" component={AuthNavigator} />
-                ) : !profile?.family_id ? (
+                ) : !family ? (
                     <Stack.Screen name="JoinFamily" component={JoinFamilyScreen} />
                 ) : (
                     <>

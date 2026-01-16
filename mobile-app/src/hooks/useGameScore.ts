@@ -4,17 +4,17 @@ import { useAuth } from '../context/AuthContext';
 import { Alert } from 'react-native';
 
 export const useGameScore = () => {
-    const { profile } = useAuth();
+    const { profile, family } = useAuth();
 
     const saveScore = useCallback(async (gameId: string, level: number, points: number) => {
-        if (!profile) return;
+        if (!profile || !family) return;
         try {
             const { error } = await supabase.from('game_scores').insert({
                 game_id: gameId,
                 level,
                 points,
                 profile_id: profile.id,
-                family_id: profile.family_id
+                family_id: family.id
             });
 
             if (error) throw error;

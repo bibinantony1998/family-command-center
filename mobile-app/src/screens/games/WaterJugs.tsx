@@ -1,9 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, LayoutAnimation, Platform, UIManager, Dimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '../../components/ui/Button';
 import { useGameScore } from '../../hooks/useGameScore';
 import { Trophy, X, GlassWater, RefreshCw } from 'lucide-react-native';
+
+if (Platform.OS === 'android') {
+    if (UIManager.setLayoutAnimationEnabledExperimental) {
+        UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+}
+
+const { width, height } = Dimensions.get('window');
 
 const LEVELS_CONFIG = [
     { target: 4, jugs: [5, 3] },      // Level 1
@@ -20,6 +29,7 @@ const LEVELS_CONFIG = [
 
 export default function WaterJugsScreen() {
     const navigation = useNavigation();
+    const insets = useSafeAreaInsets();
     const { saveScore, getHighestLevel } = useGameScore();
 
     const [level, setLevel] = useState(1);
@@ -39,12 +49,12 @@ export default function WaterJugsScreen() {
     };
 
     const startGame = () => {
-        // Cap level
         const lvl = level > 10 ? 1 : level;
         startLevel(lvl);
     };
 
     const handlePress = (idx: number) => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         if (selectedJug === null) {
             setSelectedJug(idx);
         } else {
@@ -58,6 +68,7 @@ export default function WaterJugsScreen() {
 
     const fillJug = () => {
         if (selectedJug === null) return;
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         const newJugs = [...jugs];
         newJugs[selectedJug].current = newJugs[selectedJug].capacity;
         setJugs(newJugs);
@@ -68,6 +79,7 @@ export default function WaterJugsScreen() {
 
     const emptyJug = () => {
         if (selectedJug === null) return;
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         const newJugs = [...jugs];
         newJugs[selectedJug].current = 0;
         setJugs(newJugs);
@@ -95,62 +107,147 @@ export default function WaterJugsScreen() {
     const checkWin = (currentJugs: typeof jugs) => {
         const target = LEVELS_CONFIG[level - 1].target;
         if (currentJugs.some(j => j.current === target)) {
-            // Win
             saveScore('water-jugs', level, level * 2);
             setGameState('level-up');
         }
     };
 
+    // Style adjustments for safe area
+    const containerStyle = [
+        styles.container,
+        { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 20) + 20 }
+    ];
+
     return (
-        <View style={styles.container}>
+        <View style={containerStyle}>
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}><X size={24} color="#64748b" /></TouchableOpacity>
-                <Text style={styles.levelBadge}>Level {level}</Text>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
+                    <X size={24} color="#64748b" />
+                </TouchableOpacity>
+                {gameState === 'playing' && (
+                    <View style={styles.levelBadgeContainer}>
+                        <Text style={styles.levelBadgeText}>Level {level}</Text>
+                    </View>
+                )}
             </View>
 
             {gameState === 'intro' && (
                 <View style={styles.centerContent}>
-                    <GlassWater size={64} color="#06b6d4" />
+                    <View style={styles.iconBg}>
+                        <GlassWater size={48} color="#0d9488" />
+                    </View>
                     <Text style={styles.title}>Water Jugs</Text>
                     <Text style={styles.subtitle}>Measure exactly {LEVELS_CONFIG[Math.min(level - 1, 9)].target}L</Text>
+
+                    <View style={styles.rulesContainer}>
+                        <Text style={styles.rulesTitle}>Rules:</Text>
+                        <Text style={styles.ruleText}>• Fill: Fill a jug to top.</Text>
+                        <Text style={styles.ruleText}>• Empty: Pour out a jug completely.</Text>
+                        <Text style={styles.ruleText}>• Pour: Transfer water between jugs.</Text>
+                    </View>
+
                     <Button title={`Start Level ${level}`} onPress={startGame} style={styles.startBtn} />
                 </View>
             )}
 
             {gameState === 'playing' && (
                 <View style={styles.gameContainer}>
-                    <Text style={styles.target}>Target: {LEVELS_CONFIG[level - 1].target}L</Text>
-                    <Text style={styles.moves}>Moves: {moves}</Text>
+                    <View style={styles.gameContent}>
+                        <View style={styles.goalContainer}>
+                            <Text style={styles.goalLabel}>GOAL</Text>
+                            <Text style={styles.targetBig}>{LEVELS_CONFIG[level - 1].target}L</Text>
+                            <Text style={styles.moves}>Moves: {moves}</Text>
+                        </View>
 
-                    <View style={styles.jugsRow}>
-                        {jugs.map((jug, i) => (
-                            <TouchableOpacity
-                                key={i}
-                                style={[styles.jug, selectedJug === i && styles.jugSelected]}
-                                onPress={() => handlePress(i)}
-                            >
-                                <View style={[styles.water, { height: `${(jug.current / jug.capacity) * 100}%` }]} />
-                                <Text style={styles.jugText}>{jug.current}L / {jug.capacity}L</Text>
+                        <View style={styles.jugsArea}>
+                            <View style={styles.jugsRow}>
+                                {jugs.map((jug, i) => (
+                                    <View key={i} style={styles.jugWrapper}>
+                                        <TouchableOpacity
+                                            activeOpacity={0.9}
+                                            style={[
+                                                styles.jug,
+                                                selectedJug === i && styles.jugSelected,
+                                                selectedJug !== null && selectedJug !== i && styles.jugPourTarget
+                                            ]}
+                                            onPress={() => handlePress(i)}
+                                        >
+                                            <View style={[styles.water, { height: `${(jug.current / jug.capacity) * 100}%` }]} />
+
+                                            {/* Measurement Lines */}
+                                            <View style={styles.measurementLines}>
+                                                {[...Array(3)].map((_, k) => (
+                                                    <View key={k} style={styles.measureLine} />
+                                                ))}
+                                            </View>
+
+                                            <View style={styles.jugInfoOverlay}>
+                                                <Text style={styles.jugCurrentText}>{jug.current}L</Text>
+                                                <View style={styles.divider} />
+                                                <Text style={styles.jugMaxText}>Max {jug.capacity}L</Text>
+                                            </View>
+
+                                            {selectedJug === i && (
+                                                <View style={styles.selectedBadge}>
+                                                    <Text style={styles.selectedText}>SELECTED</Text>
+                                                </View>
+                                            )}
+                                        </TouchableOpacity>
+                                        <Text style={styles.jugLabel}>Jug {i + 1}</Text>
+                                    </View>
+                                ))}
+                            </View>
+                        </View>
+
+                        {/* Controls Section - now pushed to bottom but above restart */}
+                        <View style={styles.controlsAndRestart}>
+                            {selectedJug !== null ? (
+                                <View style={styles.controlsArea}>
+                                    <View style={styles.instructionBox}>
+                                        <Text style={styles.instructionText}>
+                                            Tap another jug to pour
+                                        </Text>
+                                    </View>
+                                    <View style={styles.actionButtons}>
+                                        <Button
+                                            title="Fill Full"
+                                            onPress={fillJug}
+                                            variant="outline"
+                                            style={styles.actionBtn}
+                                            textStyle={{ color: '#2563eb' }}
+                                        />
+                                        <Button
+                                            title="Empty It"
+                                            onPress={emptyJug}
+                                            variant="outline"
+                                            style={[styles.actionBtn, { borderColor: '#fecaca' }]}
+                                            textStyle={{ color: '#dc2626' }}
+                                        />
+                                    </View>
+                                </View>
+                            ) : (
+                                <View style={styles.controlsArea}>
+                                    <View style={styles.placeholderBox}>
+                                        <Text style={styles.placeholderText}>Select a jug to Fill, Empty, or Pour</Text>
+                                    </View>
+                                </View>
+                            )}
+
+                            <TouchableOpacity onPress={() => startLevel(level)} style={styles.restartRow}>
+                                <RefreshCw size={16} color="#94a3b8" />
+                                <Text style={styles.restartText}>Restart Level</Text>
                             </TouchableOpacity>
-                        ))}
+                        </View>
                     </View>
-
-                    <View style={styles.actions}>
-                        <Button title="Fill" onPress={fillJug} disabled={selectedJug === null} variant={selectedJug !== null ? 'default' : 'outline'} />
-                        <Button title="Empty" onPress={emptyJug} disabled={selectedJug === null} variant={selectedJug !== null ? 'destructive' : 'outline'} />
-                    </View>
-
-                    <TouchableOpacity onPress={() => startLevel(level)} style={styles.restartRow}>
-                        <RefreshCw size={16} color="#94a3b8" />
-                        <Text style={styles.restartText}>Restart</Text>
-                    </TouchableOpacity>
                 </View>
             )}
 
             {gameState === 'level-up' && (
                 <View style={styles.centerContent}>
-                    <Trophy size={64} color="#fbbf24" />
-                    <Text style={styles.resultTitle}>Measured!</Text>
+                    <View style={[styles.iconBg, { backgroundColor: '#dcfce7' }]}>
+                        <Trophy size={48} color="#16a34a" />
+                    </View>
+                    <Text style={styles.resultTitle}>Target Reached!</Text>
                     <Text style={styles.points}>+{level * 2} Points</Text>
                     <Button title="Next Level" onPress={() => { setLevel(l => l + 1); startLevel(level + 1); }} style={styles.startBtn} />
                 </View>
@@ -160,25 +257,92 @@ export default function WaterJugsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#fff', padding: 20 },
-    header: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 40 },
-    closeBtn: { padding: 8, backgroundColor: '#f1f5f9', borderRadius: 20 },
-    levelBadge: { fontSize: 16, fontWeight: 'bold', color: '#64748b' },
-    centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    title: { fontSize: 32, fontWeight: 'black', color: '#1e293b', marginBottom: 12, marginTop: 16 },
-    subtitle: { fontSize: 16, color: '#64748b' },
-    startBtn: { marginTop: 32, width: '100%' },
-    resultTitle: { fontSize: 28, fontWeight: 'bold', color: '#1e293b', marginTop: 16 },
-    points: { fontSize: 36, fontWeight: 'bold', color: '#6366f1', marginTop: 8 },
-    gameContainer: { flex: 1, paddingTop: 40 },
-    target: { fontSize: 32, fontWeight: 'black', textAlign: 'center', color: '#1e293b' },
-    moves: { textAlign: 'center', color: '#64748b', marginBottom: 40 },
-    jugsRow: { flexDirection: 'row', justifyContent: 'center', gap: 20, alignItems: 'flex-end', height: 200, marginBottom: 40 },
-    jug: { width: 80, height: 150, borderWidth: 4, borderColor: '#94a3b8', borderTopWidth: 0, borderRadius: 12, justifyContent: 'flex-end', overflow: 'hidden' },
-    jugSelected: { borderColor: '#3b82f6' },
-    water: { backgroundColor: '#3b82f6', width: '100%' },
-    jugText: { position: 'absolute', width: '100%', textAlign: 'center', bottom: -24, fontWeight: 'bold', color: '#64748b' },
-    actions: { flexDirection: 'row', justifyContent: 'center', gap: 16 },
-    restartRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 40 },
-    restartText: { color: '#94a3b8' }
+    container: { flex: 1, backgroundColor: '#ffffff', paddingHorizontal: 20 },
+    header: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, alignItems: 'center', height: 44 },
+    closeBtn: { padding: 10, backgroundColor: '#f1f5f9', borderRadius: 20 },
+    levelBadgeContainer: { backgroundColor: '#f1f5f9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
+    levelBadgeText: { fontSize: 14, fontWeight: '700', color: '#64748b' },
+
+    centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
+    iconBg: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#ccfbf1', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+    title: { fontSize: 32, fontWeight: '800', color: '#1e293b', marginBottom: 8 },
+    subtitle: { fontSize: 16, color: '#64748b', marginBottom: 32 },
+
+    rulesContainer: { width: '100%', backgroundColor: '#f8fafc', padding: 20, borderRadius: 16, marginBottom: 32 },
+    rulesTitle: { fontSize: 16, fontWeight: '700', color: '#334155', marginBottom: 12 },
+    ruleText: { fontSize: 14, color: '#475569', marginBottom: 8, lineHeight: 20 },
+
+    startBtn: { width: '100%', height: 56 },
+
+    gameContainer: { flex: 1, display: 'flex', flexDirection: 'column' },
+    gameContent: { flex: 1, justifyContent: 'space-between' }, // Maximize space distribution
+
+    goalContainer: { alignItems: 'center', marginTop: 20 },
+    goalLabel: { fontSize: 12, fontWeight: '700', color: '#94a3b8', letterSpacing: 1, marginBottom: 4 },
+    targetBig: { fontSize: 40, fontWeight: '800', color: '#1e293b' },
+    moves: { fontSize: 14, color: '#64748b', marginTop: 8, fontWeight: '500' },
+
+    jugsArea: { flex: 1, justifyContent: 'center', alignItems: 'center' }, // Center jugs vertically and horizontally
+    jugsRow: { flexDirection: 'row', justifyContent: 'center', gap: 24, alignItems: 'flex-end', height: 220 },
+    jugWrapper: { alignItems: 'center', gap: 8 },
+
+    jug: {
+        width: 80,
+        height: 160,
+        borderWidth: 3,
+        borderColor: '#cbd5e1',
+        borderTopWidth: 0,
+        borderBottomLeftRadius: 24,
+        borderBottomRightRadius: 24,
+        backgroundColor: 'rgba(239, 246, 255, 0.5)',
+        justifyContent: 'flex-end',
+        overflow: 'hidden',
+        position: 'relative' // Explicitly relative
+    },
+    jugSelected: {
+        borderColor: '#6366f1',
+        borderWidth: 3,
+        shadowColor: "#6366f1",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+        elevation: 5,
+        transform: [{ scale: 1.05 }]
+    },
+    jugPourTarget: {
+        borderColor: '#60a5fa',
+        borderStyle: 'dashed'
+    },
+
+    water: { backgroundColor: '#60a5fa', width: '100%', opacity: 0.8 },
+
+    measurementLines: { position: 'absolute', right: 0, top: 20, bottom: 20, justifyContent: 'space-evenly', width: 10, opacity: 0.5 },
+    measureLine: { height: 1, backgroundColor: '#94a3b8', width: 8 },
+
+    jugInfoOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, justifyContent: 'center', alignItems: 'center', zIndex: 10 },
+    jugCurrentText: { fontSize: 20, fontWeight: '800', color: '#334155', textShadowColor: 'rgba(255,255,255,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+    divider: { width: 20, height: 1, backgroundColor: '#94a3b8', marginVertical: 4, opacity: 0.5 },
+    jugMaxText: { fontSize: 10, fontWeight: '600', color: '#64748b' },
+
+    selectedBadge: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: '#6366f1', paddingVertical: 2, alignItems: 'center' },
+    selectedText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+
+    jugLabel: { fontSize: 12, fontWeight: '600', color: '#94a3b8' },
+
+    controlsAndRestart: { paddingBottom: 10 },
+    controlsArea: { marginBottom: 20 },
+    instructionBox: { backgroundColor: '#eef2ff', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#c7d2fe', marginBottom: 16, alignItems: 'center' },
+    instructionText: { color: '#4338ca', fontWeight: '600' },
+
+    placeholderBox: { backgroundColor: '#f8fafc', padding: 16, borderRadius: 12, alignItems: 'center', height: 80, justifyContent: 'center' },
+    placeholderText: { color: '#94a3b8', fontStyle: 'italic' },
+
+    actionButtons: { flexDirection: 'row', gap: 12 },
+    actionBtn: { flex: 1, backgroundColor: '#ffffff' },
+
+    restartRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, paddingVertical: 10 },
+    restartText: { color: '#94a3b8', fontWeight: '500' },
+
+    resultTitle: { fontSize: 28, fontWeight: '800', color: '#1e293b', marginTop: 16 },
+    points: { fontSize: 36, fontWeight: '800', color: '#6366f1', marginTop: 8, marginBottom: 32 }
 });

@@ -14,7 +14,7 @@ interface AddKidModalProps {
 }
 
 export const AddKidModal: React.FC<AddKidModalProps> = ({ isOpen, onClose, onSuccess }) => {
-    const { profile } = useAuth();
+    const { profile, family } = useAuth();
     const [name, setName] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -26,7 +26,7 @@ export const AddKidModal: React.FC<AddKidModalProps> = ({ isOpen, onClose, onSuc
             return;
         }
 
-        if (!profile?.family_id) {
+        if (!family?.id) {
             Alert.alert('Error', 'Family ID not found');
             return;
         }
@@ -55,7 +55,7 @@ export const AddKidModal: React.FC<AddKidModalProps> = ({ isOpen, onClose, onSuc
                     data: {
                         display_name: name,
                         role: 'child',
-                        family_id: profile.family_id,
+                        family_id: family.id,
                     },
                 },
             });
