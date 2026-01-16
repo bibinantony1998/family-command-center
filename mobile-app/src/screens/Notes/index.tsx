@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20, backgroundColor: 'white' },
     headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#1e293b' },
     addButton: { backgroundColor: '#f59e0b', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-    list: { padding: 16 },
+    list: { padding: 16, paddingBottom: 100 },
     note: { flex: 1, padding: 16, borderRadius: 16, minHeight: 120, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
     noteText: { fontSize: 16, color: '#1e293b', lineHeight: 22 },
     emptyText: { textAlign: 'center', marginTop: 40, color: '#94a3b8' },

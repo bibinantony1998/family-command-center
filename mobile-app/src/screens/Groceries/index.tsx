@@ -1,17 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Modal, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Grocery } from '../../types/schema';
-import { Check, Plus, Trash2, ShoppingCart } from 'lucide-react-native';
+import { Check, Plus, Trash2, ShoppingCart, X } from 'lucide-react-native';
 import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
 
 export default function GroceriesScreen() {
     const { profile } = useAuth();
     const [items, setItems] = useState<Grocery[]>([]);
-    const [newItemName, setNewItemName] = useState('');
     const [refreshing, setRefreshing] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    // New Item State
+    const [newItemName, setNewItemName] = useState('');
+    const [quantity, setQuantity] = useState('');
 
     const fetchItems = async () => {
         if (!profile?.family_id) return;
@@ -41,15 +46,21 @@ export default function GroceriesScreen() {
         setLoading(true);
         const { error } = await supabase.from('groceries').insert([{
             item_name: newItemName,
+            quantity: quantity.trim() || null,
             family_id: profile?.family_id,
-            is_purchased: false
+            is_purchased: false,
+            added_by: profile?.id
         }]);
 
         if (error) Alert.alert('Error', error.message);
-        else setNewItemName('');
+        else {
+            setNewItemName('');
+            setQuantity('');
+            setIsModalOpen(false);
+            fetchItems();
+        }
 
         setLoading(false);
-        fetchItems();
     };
 
     const toggleItem = async (item: Grocery) => {
@@ -67,9 +78,12 @@ export default function GroceriesScreen() {
     };
 
     return (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
+        <View style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Shopping List</Text>
+                <TouchableOpacity onPress={() => setIsModalOpen(true)} style={styles.headerAddBtn}>
+                    <Plus color="white" size={24} />
+                </TouchableOpacity>
             </View>
 
             <FlatList
@@ -88,7 +102,10 @@ export default function GroceriesScreen() {
                             <View style={[styles.checkbox, item.is_purchased && styles.checkboxChecked]}>
                                 {item.is_purchased && <Check size={14} color="white" strokeWidth={3} />}
                             </View>
-                            <Text style={[styles.itemText, item.is_purchased && styles.textPurchased]}>{item.item_name}</Text>
+                            <Text style={[styles.itemText, item.is_purchased && styles.textPurchased]}>
+                                {item.item_name}
+                                {item.quantity ? <Text style={styles.quantityText}> ({item.quantity})</Text> : ''}
+                            </Text>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => deleteItem(item.id)} style={styles.deleteBtn}>
                             <Trash2 size={18} color="#94a3b8" />
@@ -97,27 +114,49 @@ export default function GroceriesScreen() {
                 )}
             />
 
-            <View style={styles.inputRow}>
-                <TextInput
-                    style={styles.input}
-                    placeholder="Add item..."
-                    value={newItemName}
-                    onChangeText={setNewItemName}
-                    onSubmitEditing={addItem}
-                    returnKeyType="done"
-                />
-                <TouchableOpacity style={styles.addBtn} onPress={addItem} disabled={loading}>
-                    <Plus color="white" size={24} />
-                </TouchableOpacity>
-            </View>
-        </KeyboardAvoidingView>
+            <Modal visible={isModalOpen} transparent animationType="slide">
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.overlay}>
+                    <View style={styles.modal}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Add Item</Text>
+                            <TouchableOpacity onPress={() => setIsModalOpen(false)}>
+                                <X color="#64748b" />
+                            </TouchableOpacity>
+                        </View>
+
+                        <Input
+                            placeholder="Item (e.g. Milk, Eggs)"
+                            label="Item Name"
+                            value={newItemName}
+                            onChangeText={setNewItemName}
+                            autoFocus
+                        />
+
+                        <Input
+                            placeholder="Qty (e.g. 1L, 12pk)"
+                            label="Quantity (Optional)"
+                            value={quantity}
+                            onChangeText={setQuantity}
+                        />
+
+                        <Button
+                            title={loading ? "Adding..." : "Add to List"}
+                            onPress={addItem}
+                            disabled={loading || !newItemName.trim()}
+                            style={{ marginTop: 16 }}
+                        />
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f8fafc' },
-    header: { paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20, backgroundColor: 'white' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20, backgroundColor: 'white' },
     headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#1e293b' },
+    headerAddBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f43f5e', justifyContent: 'center', alignItems: 'center' },
     list: { padding: 16, paddingBottom: 100 },
     itemWrapper: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, backgroundColor: 'white', borderRadius: 12, paddingRight: 12, shadowColor: '#000', shadowOpacity: 0.02, shadowRadius: 5 },
     item: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: 16 },
@@ -125,12 +164,15 @@ const styles = StyleSheet.create({
     checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: '#cbd5e1', marginRight: 12, justifyContent: 'center', alignItems: 'center' },
     checkboxChecked: { backgroundColor: '#10b981', borderColor: '#10b981' },
     itemText: { fontSize: 16, color: '#1e293b', fontWeight: '500' },
+    quantityText: { color: '#64748b', fontSize: 14, fontWeight: 'normal' },
     textPurchased: { textDecorationLine: 'line-through', color: '#94a3b8' },
     deleteBtn: { padding: 8 },
-
-    inputRow: { flexDirection: 'row', padding: 16, backgroundColor: 'white', borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingBottom: 32 },
-    input: { flex: 1, height: 50, backgroundColor: '#f1f5f9', borderRadius: 25, paddingHorizontal: 20, fontSize: 16, marginRight: 12, color: '#1e293b' },
-    addBtn: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#f43f5e', justifyContent: 'center', alignItems: 'center' },
     emptyContainer: { alignItems: 'center', marginTop: 60 },
-    emptyText: { color: '#94a3b8', marginTop: 12 }
+    emptyText: { color: '#94a3b8', marginTop: 12 },
+
+    // Modal
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    modal: { backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+    modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#1e293b' },
 });
