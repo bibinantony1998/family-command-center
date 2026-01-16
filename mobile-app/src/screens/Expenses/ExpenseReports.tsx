@@ -58,28 +58,9 @@ export default function ExpenseReportsScreen({ navigation }: any) {
                 setCurrentMonthSpent(currentSum);
                 setLastMonthSpent(lastSum);
 
-                // --- Trend Data (Last 5 days for mobile chart) ---
-                const tData = [];
-                for (let i = 4; i >= 0; i--) {
-                    const d = new Date();
-                    d.setDate(d.getDate() - i);
-
-                    const daySum = expenses.reduce((sum, e) => {
-                        const expenseDate = new Date(e.date);
-                        if (expenseDate.getDate() === d.getDate() &&
-                            expenseDate.getMonth() === d.getMonth() &&
-                            expenseDate.getFullYear() === d.getFullYear()) {
-                            return sum + e.amount;
-                        }
-                        return sum;
-                    }, 0);
-                    tData.push(daySum);
-                }
-                setTrendData(tData);
-
-                // --- Category Data ---
-                // Simplified: Calculate based on selected range (defaulting logic here for initial fetch)
+                // Initial Calculations
                 calculateCategories(expenses, 'current');
+                calculateTrend(expenses, 'current');
             }
         } catch (error) {
             console.error(error);
@@ -139,8 +120,65 @@ export default function ExpenseReportsScreen({ navigation }: any) {
     useEffect(() => {
         if (allExpenses.length > 0) {
             calculateCategories(allExpenses, selectedRange);
+            calculateTrend(allExpenses, selectedRange);
         }
     }, [selectedRange, allExpenses]);
+
+    const calculateTrend = (expenses: any[], range: 'all' | 'current' | 'last') => {
+        const now = new Date();
+        const tData: number[] = [];
+
+        if (range === 'current') {
+            // Days of current month up to today
+            const startParams = { year: now.getFullYear(), month: now.getMonth() };
+            const daysInMonth = now.getDate(); // Up to today
+
+            for (let i = 1; i <= daysInMonth; i++) {
+                const daySum = expenses.reduce((sum, e) => {
+                    const d = new Date(e.date);
+                    if (d.getDate() === i && d.getMonth() === startParams.month && d.getFullYear() === startParams.year) {
+                        return sum + e.amount;
+                    }
+                    return sum;
+                }, 0);
+                tData.push(daySum);
+            }
+        } else if (range === 'last') {
+            // Days of last month
+            const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const year = lastMonth.getFullYear();
+            const month = lastMonth.getMonth();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+            for (let i = 1; i <= daysInMonth; i++) {
+                const daySum = expenses.reduce((sum, e) => {
+                    const d = new Date(e.date);
+                    if (d.getDate() === i && d.getMonth() === month && d.getFullYear() === year) {
+                        return sum + e.amount;
+                    }
+                    return sum;
+                }, 0);
+                tData.push(daySum);
+            }
+        } else if (range === 'all') {
+            // Last 6 months trend
+            for (let i = 5; i >= 0; i--) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const monthIdx = d.getMonth();
+                const year = d.getFullYear();
+
+                const monthSum = expenses.reduce((sum, e) => {
+                    const ed = new Date(e.date);
+                    if (ed.getMonth() === monthIdx && ed.getFullYear() === year) {
+                        return sum + e.amount;
+                    }
+                    return sum;
+                }, 0);
+                tData.push(monthSum);
+            }
+        }
+        setTrendData(tData);
+    };
 
 
     const currency = family?.currency || 'INR';
@@ -186,7 +224,9 @@ export default function ExpenseReportsScreen({ navigation }: any) {
                 <View style={styles.chartSection}>
                     <View style={styles.sectionHeader}>
                         <TrendingUp size={18} color="#475569" />
-                        <Text style={styles.sectionTitle}>Recent Trend (Last 5 Days)</Text>
+                        <Text style={styles.sectionTitle}>
+                            Trend ({selectedRange === 'current' ? 'This Month' : selectedRange === 'last' ? 'Last Month' : 'Last 6 Months'})
+                        </Text>
                     </View>
                     <View style={styles.chartCard}>
                         <PointsChart data={trendData} />
