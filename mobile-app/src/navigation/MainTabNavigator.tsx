@@ -1,6 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Users, CheckSquare, Gift, Gamepad2, Menu, ShoppingCart } from 'lucide-react-native';
+import { Users, CheckSquare, Gift, Gamepad2, Menu, ShoppingCart, ArrowRightLeft } from 'lucide-react-native';
 import { MainTabParamList } from './types';
 
 // Screens
@@ -11,6 +11,7 @@ import GamesHubScreen from '../screens/games/Hub';
 import MenuScreen from '../screens/Menu';
 import GroceriesScreen from '../screens/Groceries';
 import NotesScreen from '../screens/Notes';
+import ExpensesScreen from '../screens/Expenses';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -63,6 +64,18 @@ export default function MainTabNavigator() {
                     tabBarIcon: ({ color, size }) => <CheckSquare size={size} color={color} />,
                 }}
             />
+
+            {/* Expenses (Split) - Parents Only */}
+            {!isChild && (
+                <Tab.Screen
+                    name="Split"
+                    component={ExpensesScreen}
+                    options={{
+                        tabBarIcon: ({ color, size }) => <ArrowRightLeft size={size} color={color} />,
+                        tabBarLabel: 'Split'
+                    }}
+                />
+            )}
 
             {/* Groceries - Host only (Parents) */}
             {!isChild && (

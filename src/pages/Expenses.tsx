@@ -11,7 +11,13 @@ import { Toast, type ToastType } from '../components/ui/Toast';
 
 export default function Expenses() {
     const navigate = useNavigate();
-    const { user, family } = useAuth(); // Added family
+    const { user, family, profile } = useAuth(); // Added profile
+
+    // Restriction for kids
+    if (profile?.role === 'child') {
+        navigate('/');
+        return null;
+    }
 
     const [balances, setBalances] = useState<Balance[]>([]);
     const [members, setMembers] = useState<Record<string, { display_name: string, avatar_url: string }>>({});

@@ -24,10 +24,9 @@ export function AppLayout() {
                         <>
                             <NavItem to="/groceries" icon={<ShoppingCart size={24} />} label="Shop" />
                             <NavItem to="/notes" icon={<StickyNote size={24} />} label="Notes" />
+                            <NavItem to="/expenses" icon={<Banknote size={24} />} label="Split" />
                         </>
                     )}
-
-                    <NavItem to="/expenses" icon={<Banknote size={24} />} label="Split" />
                     <NavItem to="/chores" icon={<CheckCircle size={24} />} label="Chores" />
                     <NavItem to="/games" icon={<Gamepad2 size={24} />} label="Games" />
                     <NavItem to="/rewards" icon={<Trophy size={24} />} label="Rewards" />
