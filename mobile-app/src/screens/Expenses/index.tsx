@@ -1,19 +1,23 @@
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert, Modal } from 'react-native'; // Added Modal
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { Wallet, Plus, ArrowLeftRight, FileBarChart, Receipt } from 'lucide-react-native';
+import { Wallet, Plus, ArrowLeftRight, FileBarChart, Receipt, Bell, Edit2, Trash2 } from 'lucide-react-native'; // Added Edit2, Trash2
 import { calculateBalances, formatCurrency, type Balance } from '../../lib/expense-utils';
 
 export default function ExpensesScreen({ navigation }: any) {
-    const { user, family } = useAuth();
+    const { user, family, profile } = useAuth();
     const [balances, setBalances] = useState<Balance[]>([]);
     const [members, setMembers] = useState<Record<string, { display_name: string, avatar_url: string }>>({});
     const [recentActivity, setRecentActivity] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+
+    // Delete State
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null);
 
     // Data Fetching with Focus Effect
     useFocusEffect(
@@ -59,6 +63,13 @@ export default function ExpensesScreen({ navigation }: any) {
                     .slice(0, 10);
 
                 setRecentActivity(combined);
+
+                // DEBUG LOGGING
+                const currentId = user?.id || profile?.id;
+                console.log("DEBUG: Current User ID:", currentId);
+                console.log("DEBUG: Auth User ID:", user?.id);
+                console.log("DEBUG: Profile ID:", profile?.id);
+                console.log("DEBUG: Balance Keys:", calculatedBalances.map(b => b.profile_id));
             }
 
             setLoading(false);
@@ -73,6 +84,47 @@ export default function ExpensesScreen({ navigation }: any) {
     const onRefresh = () => {
         setRefreshing(true);
         fetchData();
+    };
+
+    const handleRemind = async (profileId: string) => {
+        if (!family?.id) return;
+        try {
+            const { error } = await supabase.from('notifications').insert({
+                family_id: family.id,
+                recipient_id: profileId,
+                sender_id: user?.id,
+                type: 'settle_up_reminder',
+                message: 'Please settle up your expenses.'
+            });
+
+            if (error) throw error;
+            Alert.alert('Success', 'Reminder sent!');
+        } catch (error: any) {
+            console.error('Error sending reminder:', error);
+            Alert.alert('Error', 'Failed to send reminder');
+        }
+    };
+
+    const handleDelete = (id: string) => {
+        setExpenseToDelete(id);
+        setShowDeleteModal(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!expenseToDelete) return;
+
+        try {
+            const { error } = await supabase.from('expenses').delete().eq('id', expenseToDelete);
+            if (error) throw error;
+
+            // Refresh
+            fetchData();
+            setShowDeleteModal(false);
+            setExpenseToDelete(null);
+        } catch (error: any) {
+            console.error('Error deleting expense:', error);
+            Alert.alert('Error', 'Failed to delete expense');
+        }
     };
 
     const myBalance = balances.find(b => b.profile_id === user?.id)?.amount || 0;
@@ -140,9 +192,17 @@ export default function ExpensesScreen({ navigation }: any) {
                                         <View style={styles.avatar}>
                                             <Text style={styles.avatarText}>{members[b.profile_id]?.display_name?.[0] || '?'}</Text>
                                         </View>
-                                        <Text style={styles.memberName}>
-                                            {b.profile_id === user?.id ? 'You' : members[b.profile_id]?.display_name}
-                                        </Text>
+                                        <View>
+                                            <Text style={styles.memberName}>
+                                                {b.profile_id === user?.id ? 'You' : members[b.profile_id]?.display_name}
+                                            </Text>
+                                            {b.amount < 0 && b.profile_id !== user?.id && (
+                                                <TouchableOpacity onPress={() => handleRemind(b.profile_id)} style={styles.remindBtn}>
+                                                    <Bell size={12} color="#4f46e5" />
+                                                    <Text style={styles.remindText}>Remind</Text>
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
                                     </View>
                                     <Text style={[styles.amountText, b.amount >= 0 ? styles.textEmerald : styles.textRose]}>
                                         {b.amount >= 0 ? '+' : '-'}{formatCurrency(Math.abs(b.amount), currency)}
@@ -174,14 +234,34 @@ export default function ExpensesScreen({ navigation }: any) {
                                                 {formatCurrency(item.amount, currency)}
                                             </Text>
                                         </View>
-                                        <Text style={styles.activityMeta}>
-                                            {item.type === 'expense'
-                                                ? `${members[item.paid_by]?.display_name || 'Unknown'} paid`
-                                                : `${members[item.payer_id]?.display_name} → ${members[item.receiver_id]?.display_name}`
-                                            }
-                                            {' • '}
-                                            {new Date(item.date || item.created_at).toLocaleDateString()}
-                                        </Text>
+                                        <View style={styles.activityFooter}>
+                                            <Text style={styles.activityMeta} numberOfLines={1} ellipsizeMode="tail">
+                                                {item.type === 'expense'
+                                                    ? `${members[item.paid_by]?.display_name || 'Unknown'} paid`
+                                                    : `${members[item.payer_id]?.display_name} → ${members[item.receiver_id]?.display_name}`
+                                                }
+                                                {' • '}
+                                                {new Date(item.date || item.created_at).toLocaleDateString()}
+                                            </Text>
+
+                                            {/* Action Buttons for Expense Owner */}
+                                            {item.type === 'expense' && item.paid_by === user?.id && (
+                                                <View style={styles.activityActions}>
+                                                    <TouchableOpacity
+                                                        onPress={() => navigation.navigate('AddExpense', { id: item.id })}
+                                                        style={styles.actionIconBtn}
+                                                    >
+                                                        <Edit2 size={14} color="#64748b" />
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity
+                                                        onPress={() => handleDelete(item.id)}
+                                                        style={[styles.actionIconBtn, { backgroundColor: '#fef2f2' }]}
+                                                    >
+                                                        <Trash2 size={14} color="#ef4444" />
+                                                    </TouchableOpacity>
+                                                </View>
+                                            )}
+                                        </View>
                                     </View>
                                 </View>
                             ))}
@@ -194,6 +274,37 @@ export default function ExpensesScreen({ navigation }: any) {
                 </View>
 
             </ScrollView>
+
+            {/* Delete Modal */}
+            <Modal
+                visible={showDeleteModal}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowDeleteModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Delete Expense?</Text>
+                        <Text style={styles.modalText}>
+                            Are you sure you want to delete this expense? This action cannot be undone and will recalculate all balances.
+                        </Text>
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity
+                                onPress={() => setShowDeleteModal(false)}
+                                style={[styles.modalBtn, styles.cancelBtn]}
+                            >
+                                <Text style={styles.cancelBtnText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={confirmDelete}
+                                style={[styles.modalBtn, styles.deleteBtn]}
+                            >
+                                <Text style={styles.deleteBtnText}>Delete</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -241,7 +352,10 @@ const styles = StyleSheet.create({
     textSlate: { color: '#0f172a' },
     activityTitle: { fontWeight: '600', color: '#0f172a', maxWidth: '70%' },
     activityAmount: { fontWeight: 'bold' },
-    activityMeta: { fontSize: 12, color: '#64748b', marginTop: 4 },
+    activityFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
+    activityMeta: { fontSize: 12, color: '#64748b', flex: 1, marginRight: 8 },
+    activityActions: { flexDirection: 'row', gap: 8 },
+    actionIconBtn: { padding: 6, borderRadius: 8, backgroundColor: '#f1f5f9' },
     activityContent: { flex: 1 },
 
     // Actions
@@ -255,5 +369,20 @@ const styles = StyleSheet.create({
 
     // Empty State
     emptyState: { alignItems: 'center', paddingVertical: 40 },
-    emptyText: { color: '#94a3b8' }
+    emptyText: { color: '#94a3b8' },
+
+    remindBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2, paddingVertical: 2, paddingHorizontal: 6, backgroundColor: '#eef2ff', borderRadius: 8, alignSelf: 'flex-start' },
+    remindText: { fontSize: 10, color: '#4f46e5', fontWeight: 'bold' },
+
+    // Modal Styles
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+    modalContent: { backgroundColor: 'white', borderRadius: 20, padding: 24, width: '100%', maxWidth: 340, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 5 },
+    modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#1e293b', marginBottom: 12 },
+    modalText: { fontSize: 16, color: '#64748b', marginBottom: 24, lineHeight: 24 },
+    modalActions: { flexDirection: 'row', gap: 12, justifyContent: 'flex-end' },
+    modalBtn: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 12 },
+    cancelBtn: { backgroundColor: '#f1f5f9' },
+    deleteBtn: { backgroundColor: '#ef4444' },
+    cancelBtnText: { color: '#64748b', fontWeight: 'bold' },
+    deleteBtnText: { color: 'white', fontWeight: 'bold' },
 });

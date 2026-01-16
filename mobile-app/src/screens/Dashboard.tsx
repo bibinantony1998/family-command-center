@@ -6,10 +6,20 @@ import { Card } from '../components/ui/Card';
 import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { MainTabParamList } from '../navigation/types';
-import { Check, X, ShoppingCart, StickyNote, Star, Gift, CheckSquare } from 'lucide-react-native';
+import { Check, X, ShoppingCart, StickyNote, Star, Gift, CheckSquare, Bell } from 'lucide-react-native';
 import { Chore, Grocery, Note, Redemption } from '../types/schema';
 
 type DashboardNavigationProp = BottomTabNavigationProp<MainTabParamList, 'Dashboard'>;
+
+interface Notification {
+    id: string;
+    type: string;
+    message: string;
+    sender_id: string;
+    is_read: boolean;
+    created_at: string;
+    profiles?: { display_name: string };
+}
 
 export default function DashboardScreen() {
     const { profile, user } = useAuth();
@@ -21,6 +31,7 @@ export default function DashboardScreen() {
     const [nextChore, setNextChore] = useState<Chore | null>(null);
     const [latestNote, setLatestNote] = useState<Note | null>(null);
     const [pendingRedemptions, setPendingRedemptions] = useState<Redemption[]>([]);
+    const [notifications, setNotifications] = useState<Notification[]>([]);
 
     // Child State
     const [myPendingChores, setMyPendingChores] = useState<Chore[]>([]);
@@ -29,6 +40,17 @@ export default function DashboardScreen() {
         if (!profile?.family_id) return;
 
         try {
+            // Fetch Notifications (for everyone)
+            const { data: notifData } = await supabase
+                .from('notifications')
+                .select('*, profiles:sender_id(display_name)')
+                .eq('family_id', profile.family_id)
+                .eq('recipient_id', user?.id)
+                .eq('is_read', false)
+                .order('created_at', { ascending: false });
+
+            setNotifications(notifData as any || []);
+
             if (profile.role === 'parent') {
                 // Parent Data
                 const { count: gCount } = await supabase
@@ -92,6 +114,13 @@ export default function DashboardScreen() {
         fetchData();
     }, [fetchData]);
 
+    const handleDismissNotification = async (id: string) => {
+        const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+        if (!error) {
+            setNotifications(prev => prev.filter(n => n.id !== id));
+        }
+    };
+
     const handleRedemption = async (id: string, status: 'approved' | 'rejected') => {
         if (status === 'approved') {
             const { error } = await supabase.rpc('approve_redemption', { redemption_id_param: id });
@@ -103,8 +132,37 @@ export default function DashboardScreen() {
         fetchData(); // refresh list
     };
 
+    const NotificationsWidget = () => (
+        notifications.length > 0 ? (
+            <Card style={styles.notificationCard}>
+                <View style={styles.cardHeader}>
+                    <Bell size={20} color="#4f46e5" />
+                    <Text style={styles.notificationTitle}>Notifications</Text>
+                    <View style={styles.badge}><Text style={styles.badgeText}>{notifications.length}</Text></View>
+                </View>
+
+                {notifications.map(n => (
+                    <View key={n.id} style={styles.notificationItem}>
+                        <View style={styles.notificationIcon}>
+                            <Bell size={14} color="#4f46e5" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.notificationMessage}>{n.message}</Text>
+                            <Text style={styles.notificationMeta}>From {n.profiles?.display_name || 'System'}</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => handleDismissNotification(n.id)} style={styles.dismissBtn}>
+                            <X size={16} color="#94a3b8" />
+                        </TouchableOpacity>
+                    </View>
+                ))}
+            </Card>
+        ) : null
+    );
+
     const ParentDashboard = () => (
         <View>
+            <NotificationsWidget />
+
             {/* Pending Redemptions */}
             {pendingRedemptions.length > 0 && (
                 <Card style={styles.alertCard}>
@@ -178,6 +236,8 @@ export default function DashboardScreen() {
 
     const ChildDashboard = () => (
         <View>
+            <NotificationsWidget />
+
             <Card style={styles.balanceCard}>
                 <Text style={styles.balanceLabel}>My Balance</Text>
                 <View style={styles.balanceRow}>
@@ -237,7 +297,7 @@ const styles = StyleSheet.create({
     avatarTextSmall: { color: '#6366f1', fontWeight: 'bold', fontSize: 16 },
 
     // Alert Card
-    alertCard: { backgroundColor: '#faf5ff', borderColor: '#e9d5ff' },
+    alertCard: { backgroundColor: '#faf5ff', borderColor: '#e9d5ff', marginBottom: 16 },
     cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
     alertTitle: { fontSize: 16, fontWeight: '600', color: '#6b21a8', marginLeft: 8, flex: 1 },
     badge: { backgroundColor: '#e9d5ff', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 },
@@ -249,6 +309,15 @@ const styles = StyleSheet.create({
     actionBtn: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
     rejectBtn: { backgroundColor: '#fef2f2' },
     approveBtn: { backgroundColor: '#f0fdf4' },
+
+    // Notification Card
+    notificationCard: { backgroundColor: '#eef2ff', borderColor: '#e0e7ff', marginBottom: 16 },
+    notificationTitle: { fontSize: 16, fontWeight: '600', color: '#4338ca', marginLeft: 8, flex: 1 },
+    notificationItem: { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: 'rgba(255,255,255,0.6)', borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#e0e7ff' },
+    notificationIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#e0e7ff', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+    notificationMessage: { fontWeight: '600', color: '#1e293b', fontSize: 14 },
+    notificationMeta: { fontSize: 12, color: '#64748b', marginTop: 2 },
+    dismissBtn: { padding: 8 },
 
     // Grid
     grid: { flexDirection: 'row', gap: 16, marginBottom: 16 },

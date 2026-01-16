@@ -122,7 +122,8 @@ export default function Expenses() {
         }
     };
 
-    const myBalance = balances.find(b => b.profile_id === user?.id)?.amount || 0;
+    const currentUserId = user?.id || profile?.id;
+    const myBalance = balances.find(b => b.profile_id === currentUserId)?.amount || 0;
     const currency = family?.currency || 'INR'; // Default
 
     if (loading) return <div className="p-8 text-center">Loading...</div>;
@@ -180,10 +181,10 @@ export default function Expenses() {
                                     </div>
                                     <div>
                                         <span className="font-medium text-gray-700 block">
-                                            {b.profile_id === user?.id ? 'You' : members[b.profile_id]?.display_name}
+                                            {b.profile_id === currentUserId ? 'You' : members[b.profile_id]?.display_name}
                                         </span>
                                         {/* Remind Button for others with negative balance */}
-                                        {b.amount < 0 && b.profile_id !== user?.id && (
+                                        {b.amount < 0 && b.profile_id !== currentUserId && (
                                             <button
                                                 onClick={() => handleRemind(b.profile_id)}
                                                 className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -244,7 +245,7 @@ export default function Expenses() {
                                     </p>
 
                                     {/* Edit/Delete Actions for Expense Owner */}
-                                    {item.type === 'expense' && item.paid_by === user?.id && (
+                                    {item.type === 'expense' && item.paid_by === currentUserId && (
                                         <div className="flex items-center gap-2">
                                             <button
                                                 onClick={() => navigate(`/expenses/add?id=${item.id}`)}
