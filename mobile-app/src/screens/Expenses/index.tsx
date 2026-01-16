@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
     activityContent: { flex: 1 },
 
     // Actions
-    actionRow: { paddingHorizontal: 24, flexDirection: 'row', gap: 16, marginVertical: 32 },
+    actionRow: { paddingHorizontal: 24, flexDirection: 'row', gap: 16, marginVertical: 16 },
     actionButton: { flex: 1, backgroundColor: 'white', padding: 16, borderRadius: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2, borderWidth: 1, borderColor: '#f1f5f9' },
     actionIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
     actionText: { color: '#0f172a', fontWeight: 'bold' },
