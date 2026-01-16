@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
-import { Trophy, Flame, Star, Copy, Users, Check, Edit2, Plus, ArrowRightLeft } from 'lucide-react';
+import { Trophy, Flame, Star, Copy, Users, Check, Edit2, ArrowRightLeft } from 'lucide-react';
 import type { Family } from '../types';
 import { calculateBalances, type ExpenseSplit, type Settlement } from '../lib/expense-utils';
 import { Toast, type ToastType } from '../components/ui/Toast';

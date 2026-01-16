@@ -82,7 +82,7 @@ export default function Groceries() {
                 quantity: pendingQuantity || null, // handle empty string as null
                 family_id: family.id,
                 is_purchased: false,
-                added_by: profile.id,
+                added_by: profile?.id,
             },
         ])
             .select()

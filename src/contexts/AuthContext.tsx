@@ -109,7 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const fetchMyFamilies = async (userId: string) => {
-        const { data, error } = await supabase
+        const { data } = await supabase
             .from('family_members')
             .select('family:families(*), role')
             .eq('profile_id', userId);
