@@ -8,26 +8,26 @@ import { AddChoreModal } from '../../components/chores/AddChoreModal';
 import { Card } from '../../components/ui/Card';
 
 export default function ChoresScreen() {
-    const { profile, user } = useAuth();
+    const { profile, user, family } = useAuth();
     const [chores, setChores] = useState<Chore[]>([]);
     const [refreshing, setRefreshing] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     const fetchChores = async () => {
-        if (!profile?.family_id) return;
+        if (!family?.id) return;
         const { data } = await supabase
             .from('chores')
             .select('*')
-            .eq('family_id', profile.family_id)
+            .eq('family_id', family.id)
             .order('created_at', { ascending: false });
         if (data) setChores(data);
     };
 
     useEffect(() => {
-        fetchChores();
+        if (family?.id) fetchChores();
 
-        const channel = supabase.channel(`chores:${profile?.family_id}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'chores', filter: `family_id=eq.${profile?.family_id}` },
+        const channel = supabase.channel(`chores:${family?.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'chores', filter: `family_id=eq.${family?.id}` },
                 (payload) => {
                     if (payload.eventType === 'INSERT') {
                         const newChore = payload.new as Chore;
@@ -46,7 +46,7 @@ export default function ChoresScreen() {
             .subscribe();
 
         return () => { supabase.removeChannel(channel) };
-    }, [profile?.family_id]);
+    }, [family?.id]);
 
     const toggleChore = async (chore: Chore) => {
         const isNowDone = !chore.is_completed;
@@ -81,9 +81,9 @@ export default function ChoresScreen() {
     };
 
     const handleAddChore = async (title: string, points: number) => {
-        if (!profile?.family_id) return;
+        if (!family?.id) return;
         const { data, error } = await supabase.from('chores').insert([{
-            title, points, family_id: profile.family_id
+            title, points, family_id: family.id
         }]).select().single();
 
         if (error) throw error;

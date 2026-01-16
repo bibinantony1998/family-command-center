@@ -22,8 +22,8 @@ export default function ExpenseReportsScreen({ navigation }: any) {
     const [categoryData, setCategoryData] = useState<{ name: string, value: number, color: string }[]>([]);
 
     useEffect(() => {
-        fetchData();
-    }, []);
+        if (family?.id) fetchData();
+    }, [family?.id]); // Re-fetch when family changes
 
     const fetchData = async () => {
         try {

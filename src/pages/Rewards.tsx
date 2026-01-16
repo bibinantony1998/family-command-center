@@ -9,7 +9,7 @@ import type { Reward, Redemption } from '../types';
 import confetti from 'canvas-confetti';
 
 export default function Rewards() {
-    const { profile } = useAuth();
+    const { profile, family } = useAuth();
     const [rewards, setRewards] = useState<Reward[]>([]);
     const [redemptions, setRedemptions] = useState<Redemption[]>([]);
     const [balance, setBalance] = useState(0);
@@ -21,13 +21,13 @@ export default function Rewards() {
     const isParent = profile?.role === 'parent';
 
     const fetchData = useCallback(async () => {
-        if (!profile?.family_id) return;
+        if (!family?.id) return;
 
         // Fetch Rewards Catalog
         const { data: rewardsData } = await supabase
             .from('rewards')
             .select('*')
-            .eq('family_id', profile.family_id)
+            .eq('family_id', family.id)
             .order('cost', { ascending: true });
 
         if (rewardsData) setRewards(rewardsData);
@@ -40,12 +40,12 @@ export default function Rewards() {
                 rewards (*),
                 profiles:kid_id (display_name)
             `)
-            .eq('family_id', profile.family_id)
+            .eq('family_id', family.id)
             .order('created_at', { ascending: false });
 
         // If child, only see own? 
         // Plan says: "Kid: View Redemption Status". Parents "View All"
-        if (!isParent) {
+        if (!isParent && profile) {
             query = query.eq('kid_id', profile.id);
         }
 
@@ -54,24 +54,24 @@ export default function Rewards() {
         if (redemptionsData) setRedemptions(redemptionsData as any);
 
         // Fetch Balance (Kids only)
-        if (!isParent) {
+        if (!isParent && profile) {
             const { data: profileData } = await supabase.from('profiles').select('balance').eq('id', profile.id).single();
             if (profileData) setBalance(profileData.balance || 0);
         }
-    }, [profile, isParent]);
+    }, [profile, family?.id, isParent]);
 
     useEffect(() => {
-        fetchData();
+        if (family?.id) fetchData();
 
         // Subscription would go here for real-time updates
-    }, [fetchData]);
+    }, [fetchData, family?.id]);
 
     const handleAddReward = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newRewardName || !newRewardCost || !profile?.family_id) return;
+        if (!newRewardName || !newRewardCost || !family?.id) return;
 
         const { error } = await supabase.from('rewards').insert({
-            family_id: profile.family_id,
+            family_id: family.id,
             name: newRewardName,
             cost: parseInt(newRewardCost),
             icon: '🎁' // Default icon for now

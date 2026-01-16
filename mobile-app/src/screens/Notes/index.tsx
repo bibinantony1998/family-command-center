@@ -18,7 +18,7 @@ const COLOR_MAP: Record<string, string> = {
 };
 
 export default function NotesScreen() {
-    const { profile } = useAuth();
+    const { profile, family } = useAuth();
     const [notes, setNotes] = useState<Note[]>([]);
     const [refreshing, setRefreshing] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -28,29 +28,29 @@ export default function NotesScreen() {
     const [selectedColor, setSelectedColor] = useState('bg-yellow-200');
 
     const fetchNotes = async () => {
-        if (!profile?.family_id) return;
+        if (!family?.id) return;
         const { data } = await supabase
             .from('notes')
             .select('*')
-            .eq('family_id', profile.family_id)
+            .eq('family_id', family.id)
             .order('created_at', { ascending: false });
         if (data) setNotes(data);
     };
 
     useEffect(() => {
-        fetchNotes();
-        const channel = supabase.channel(`notes:${profile?.family_id}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'notes', filter: `family_id=eq.${profile?.family_id}` }, () => fetchNotes())
+        if (family?.id) fetchNotes();
+        const channel = supabase.channel(`notes:${family?.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'notes', filter: `family_id=eq.${family?.id}` }, () => fetchNotes())
             .subscribe();
         return () => { supabase.removeChannel(channel) };
-    }, [profile?.family_id]);
+    }, [family?.id]);
 
     const addNote = async () => {
-        if (!content.trim()) return;
+        if (!content.trim() || !family?.id) return;
         const { error } = await supabase.from('notes').insert([{
             content,
             color: selectedColor,
-            family_id: profile?.family_id,
+            family_id: family.id,
             author_id: profile?.id // Optional if DB allows null, but good practice
         }]);
 

@@ -22,7 +22,7 @@ interface Notification {
 }
 
 export default function DashboardScreen() {
-    const { profile, user } = useAuth();
+    const { profile, user, family } = useAuth();
     const navigation = useNavigation<DashboardNavigationProp>();
     const [refreshing, setRefreshing] = useState(false);
 
@@ -37,33 +37,33 @@ export default function DashboardScreen() {
     const [myPendingChores, setMyPendingChores] = useState<Chore[]>([]);
 
     const fetchData = useCallback(async () => {
-        if (!profile?.family_id) return;
+        if (!family?.id) return;
 
         try {
             // Fetch Notifications (for everyone)
             const { data: notifData } = await supabase
                 .from('notifications')
                 .select('*, profiles:sender_id(display_name)')
-                .eq('family_id', profile.family_id)
+                .eq('family_id', family.id)
                 .eq('recipient_id', user?.id)
                 .eq('is_read', false)
                 .order('created_at', { ascending: false });
 
             setNotifications(notifData as any || []);
 
-            if (profile.role === 'parent') {
+            if (profile?.role === 'parent') {
                 // Parent Data
                 const { count: gCount } = await supabase
                     .from('groceries')
                     .select('*', { count: 'exact', head: true })
-                    .eq('family_id', profile.family_id)
+                    .eq('family_id', family.id)
                     .eq('is_purchased', false);
                 setGroceryCount(gCount || 0);
 
                 const { data: choreData } = await supabase
                     .from('chores')
                     .select('*')
-                    .eq('family_id', profile.family_id)
+                    .eq('family_id', family.id)
                     .eq('is_completed', false)
                     .limit(1)
                     .maybeSingle();
@@ -72,7 +72,7 @@ export default function DashboardScreen() {
                 const { data: noteData } = await supabase
                     .from('notes')
                     .select('*')
-                    .eq('family_id', profile.family_id)
+                    .eq('family_id', family.id)
                     .order('created_at', { ascending: false })
                     .limit(1)
                     .maybeSingle();
@@ -81,7 +81,7 @@ export default function DashboardScreen() {
                 const { data: redemptionData } = await supabase
                     .from('redemptions')
                     .select('*, rewards(name, cost), profiles:kid_id(display_name)')
-                    .eq('family_id', profile.family_id)
+                    .eq('family_id', family.id)
                     .eq('status', 'pending')
                     .order('created_at', { ascending: false });
 
@@ -93,7 +93,7 @@ export default function DashboardScreen() {
                 const { data: chores } = await supabase
                     .from('chores')
                     .select('*')
-                    .eq('family_id', profile.family_id)
+                    .eq('family_id', family.id)
                     .eq('assigned_to', user?.id) // or unassigned logic if any, but sticking to simple
                     .eq('is_completed', false);
                 setMyPendingChores(chores || []);
@@ -102,7 +102,7 @@ export default function DashboardScreen() {
         } catch (e) {
             console.error(e);
         }
-    }, [profile, user]);
+    }, [profile, user, family?.id]);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -111,8 +111,8 @@ export default function DashboardScreen() {
     }, [fetchData]);
 
     useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+        if (family?.id) fetchData();
+    }, [family?.id, fetchData]);
 
     const handleDismissNotification = async (id: string) => {
         const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);

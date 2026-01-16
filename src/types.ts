@@ -6,6 +6,7 @@ export interface Profile {
     role: Role | null;
     avatar_url: string | null;
     family_id: string | null; // uuid
+    current_family_id?: string | null; // uuid
     created_at: string;
 }
 

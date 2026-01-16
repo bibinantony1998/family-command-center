@@ -19,7 +19,7 @@ interface Notification {
 }
 
 export default function Dashboard() {
-    const { profile } = useAuth();
+    const { profile, family } = useAuth(); // Use family from context
     const navigate = useNavigate();
 
     // Parent Dashboard State (Always call hooks)
@@ -65,16 +65,15 @@ export default function Dashboard() {
     const today = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date());
 
     useEffect(() => {
-        if (!profile?.family_id) return;
+        if (!family?.id) return; // Wait for family to be loaded
 
         const fetchData = async () => {
-            // setLoading(true);
             try {
                 // 1. Get Grocery Count (unpurchased)
                 const { count: gCount } = await supabase
                     .from('groceries')
                     .select('*', { count: 'exact', head: true })
-                    .eq('family_id', profile.family_id)
+                    .eq('family_id', family.id) // Use family.id
                     .eq('is_purchased', false);
 
                 if (gCount !== null) setGroceryCount(gCount);
@@ -83,7 +82,7 @@ export default function Dashboard() {
                 const { data: choreData } = await supabase
                     .from('chores')
                     .select('*')
-                    .eq('family_id', profile.family_id)
+                    .eq('family_id', family.id)
                     .eq('is_completed', false)
                     .limit(1)
                     .maybeSingle();
@@ -94,7 +93,7 @@ export default function Dashboard() {
                 const { data: noteData } = await supabase
                     .from('notes')
                     .select('*')
-                    .eq('family_id', profile.family_id)
+                    .eq('family_id', family.id)
                     .order('created_at', { ascending: false })
                     .limit(1)
                     .maybeSingle();
@@ -109,7 +108,7 @@ export default function Dashboard() {
                         rewards (name, cost),
                         profiles:kid_id (display_name)
                     `)
-                    .eq('family_id', profile.family_id)
+                    .eq('family_id', family.id)
                     .eq('status', 'pending')
                     .order('created_at', { ascending: false });
 
@@ -117,8 +116,6 @@ export default function Dashboard() {
 
             } catch (error) {
                 console.error("Error fetching dashboard data:", error);
-            } finally {
-                // setLoading(false);
             }
         };
 
@@ -129,8 +126,8 @@ export default function Dashboard() {
                     *,
                     profiles:sender_id (display_name)
                 `)
-                .eq('family_id', profile.family_id)
-                .eq('recipient_id', profile.id)
+                .eq('family_id', family.id)
+                .eq('recipient_id', profile?.id)
                 .eq('is_read', false)
                 .order('created_at', { ascending: false });
 
@@ -140,8 +137,7 @@ export default function Dashboard() {
         fetchData();
         fetchNotifications();
 
-        // Optional: subscribe to refresh dashboard data, but for now simple fetch on mount is fine.
-    }, [profile?.family_id]);
+    }, [family?.id, profile?.id]); // Depend on family.id
 
     // Conditional rendering for Kids Dashboard (MOVED HERE to satisfy Hook Rules)
     if (profile?.role === 'child') {

@@ -14,20 +14,20 @@ const COLORS = [
 ];
 
 export default function Notes() {
-    const { profile } = useAuth();
+    const { profile, family } = useAuth();
     const [notes, setNotes] = useState<Note[]>([]);
     const [isAdding, setIsAdding] = useState(false);
     const [newContent, setNewContent] = useState('');
     const [selectedColor, setSelectedColor] = useState(COLORS[0]);
 
     useEffect(() => {
-        if (!profile?.family_id) return;
+        if (!family?.id) return;
 
         const fetchNotes = async () => {
             const { data } = await supabase
                 .from('notes')
                 .select('*')
-                .eq('family_id', profile.family_id)
+                .eq('family_id', family.id)
                 .order('created_at', { ascending: false });
             if (data) setNotes(data);
         };
@@ -35,12 +35,12 @@ export default function Notes() {
         fetchNotes();
 
         const channel = supabase
-            .channel(`notes:${profile.family_id}`)
+            .channel(`notes:${family.id}`)
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
                 table: 'notes',
-                filter: `family_id=eq.${profile.family_id}`
+                filter: `family_id=eq.${family.id}`
             },
                 (payload) => {
                     if (payload.eventType === 'INSERT') {
@@ -58,15 +58,15 @@ export default function Notes() {
             .subscribe();
 
         return () => { supabase.removeChannel(channel) };
-    }, [profile?.family_id]);
+    }, [family?.id]);
 
     const addNote = async () => {
-        if (!newContent.trim() || !profile?.family_id) return;
+        if (!newContent.trim() || !family?.id || !profile) return;
 
         const { data, error } = await supabase.from('notes').insert([{
             content: newContent,
             color: selectedColor.bg,
-            family_id: profile.family_id,
+            family_id: family.id,
             author_id: profile.id
         }])
             .select()

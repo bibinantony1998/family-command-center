@@ -36,7 +36,7 @@ export default function App() {
 }
 
 function AuthenticatedAppContent() {
-  const { profile, loading: authLoading } = useAuth();
+  const { profile, loading: authLoading, myFamilies } = useAuth();
 
   if (authLoading) {
     return <div className="h-screen w-full flex items-center justify-center bg-slate-50">
@@ -44,14 +44,24 @@ function AuthenticatedAppContent() {
     </div>;
   }
 
-  // If user is authenticated but not in a family, only allow JoinFamily page
-  if (profile && !profile.family_id) {
+  // If user is authenticated but not in any family, only allow JoinFamily page
+  if (profile && (!myFamilies || myFamilies.length === 0)) {
     return (
       <Routes>
         <Route path="*" element={<JoinFamily />} />
       </Routes>
     );
   }
+
+  // If user has families but no active family context (e.g. just left one), redirect to profile to pick one
+  // But we must allow the /profile route itself to work!
+  // The AppLayout handles the sidebar/redirects usually. Let's let the main Routes handle it,
+  // but if we are at root /, we might want to redirect.
+  // Actually, if we just let it fall through to main Routes:
+  // - / -> Dashboard -> might crash if family is null?
+  // - /profile -> Profile -> Works.
+
+  // Let's just fix the blocking check first.
 
   return (
     <Routes>
@@ -81,6 +91,7 @@ function AuthenticatedAppContent() {
         <Route path="expenses/add" element={<AddExpense />} />
         <Route path="expenses/settle" element={<SettleUp />} />
         <Route path="expenses/reports" element={<ExpenseReports />} />
+        <Route path="join-family" element={<JoinFamily />} />
       </Route>
     </Routes>
   );

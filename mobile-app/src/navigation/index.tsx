@@ -49,6 +49,7 @@ export default function RootNavigator() {
                     <>
                         <Stack.Screen name="Main" component={MainTabNavigator} />
                         <Stack.Screen name="Profile" component={require('../screens/Profile').default} />
+                        <Stack.Screen name="JoinFamily" component={JoinFamilyScreen} />
 
                         {/* Expenses */}
                         <Stack.Screen name="AddExpense" component={require('../screens/Expenses/AddExpense').default} />

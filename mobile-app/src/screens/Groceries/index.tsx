@@ -8,7 +8,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 
 export default function GroceriesScreen() {
-    const { profile } = useAuth();
+    const { profile, family } = useAuth();
     const [items, setItems] = useState<Grocery[]>([]);
     const [refreshing, setRefreshing] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -19,35 +19,35 @@ export default function GroceriesScreen() {
     const [quantity, setQuantity] = useState('');
 
     const fetchItems = async () => {
-        if (!profile?.family_id) return;
+        if (!family?.id) return;
         const { data } = await supabase
             .from('groceries')
             .select('*')
-            .eq('family_id', profile.family_id)
+            .eq('family_id', family.id)
             .order('is_purchased', { ascending: true })
             .order('created_at', { ascending: false });
         if (data) setItems(data);
     };
 
     useEffect(() => {
-        fetchItems();
+        if (family?.id) fetchItems();
 
         // Simple realtime subscription
-        const channel = supabase.channel(`groceries:${profile?.family_id}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'groceries', filter: `family_id=eq.${profile?.family_id}` },
+        const channel = supabase.channel(`groceries:${family?.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'groceries', filter: `family_id=eq.${family?.id}` },
                 () => fetchItems())
             .subscribe();
 
         return () => { supabase.removeChannel(channel) };
-    }, [profile?.family_id]);
+    }, [family?.id]);
 
     const addItem = async () => {
-        if (!newItemName.trim()) return;
+        if (!newItemName.trim() || !family?.id) return;
         setLoading(true);
         const { error } = await supabase.from('groceries').insert([{
             item_name: newItemName,
             quantity: quantity.trim() || null,
-            family_id: profile?.family_id,
+            family_id: family.id,
             is_purchased: false,
             added_by: profile?.id
         }]);

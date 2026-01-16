@@ -8,13 +8,16 @@ type Profile = {
     role: 'parent' | 'child';
     avatar_url: string | null;
     family_id: string | null;
+    current_family_id: string | null; // Added current_family_id
     balance: number;
 };
 
 type Family = {
     id: string;
     name: string;
+    secret_key: string; // Added secret_key
     currency: string;
+    membership_role?: string; // Optional role in this family
 };
 
 type AuthContextType = {
@@ -22,9 +25,12 @@ type AuthContextType = {
     user: User | null;
     profile: Profile | null;
     family: Family | null;
+    myFamilies: Family[]; // New: List of families
     loading: boolean;
     refreshProfile: () => Promise<void>;
     signOut: () => Promise<void>;
+    switchFamily: (familyId: string) => Promise<void>; // New: Switch function
+    leaveFamily: (familyId: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -32,9 +38,12 @@ const AuthContext = createContext<AuthContextType>({
     user: null,
     profile: null,
     family: null,
+    myFamilies: [],
     loading: true,
     refreshProfile: async () => { },
     signOut: async () => { },
+    switchFamily: async () => { },
+    leaveFamily: async () => { },
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -42,6 +51,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [profile, setProfile] = useState<Profile | null>(null);
     const [family, setFamily] = useState<Family | null>(null);
+    const [myFamilies, setMyFamilies] = useState<Family[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchProfile = async (userId: string) => {
@@ -56,9 +66,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 console.error('Error fetching profile:', error);
             } else {
                 setProfile(data);
-                if (data.family_id) {
-                    fetchFamily(data.family_id);
+
+                // Determine active family ID
+                const activeFamilyId = data.current_family_id || data.family_id;
+
+                if (activeFamilyId) {
+                    await fetchFamily(activeFamilyId);
+                } else {
+                    setFamily(null);
                 }
+
+                // Fetch all families
+                await fetchMyFamilies(userId);
             }
         } catch (e) {
             console.error('Exception fetching profile:', e);
@@ -70,9 +89,43 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (data) setFamily(data);
     };
 
+    const fetchMyFamilies = async (userId: string) => {
+        try {
+            const { data, error } = await supabase
+                .from('family_members')
+                .select('family:families(*), role')
+                .eq('profile_id', userId);
+
+            if (data) {
+                const familiesList = data.map((item: any) => ({
+                    ...item.family,
+                    membership_role: item.role
+                }));
+                setMyFamilies(familiesList);
+            }
+        } catch (e) {
+            console.error('Error fetching families list:', e);
+        }
+    };
+
     const refreshProfile = async () => {
         if (user) {
             await fetchProfile(user.id);
+        }
+    };
+
+    const switchFamily = async (targetFamilyId: string) => {
+        try {
+            setLoading(true);
+            const { error } = await supabase.rpc('switch_family', { target_family_id: targetFamilyId });
+            if (error) throw error;
+
+            await refreshProfile();
+        } catch (err: any) {
+            console.error("Error switching family:", err);
+            throw err;
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -94,14 +147,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         initSession();
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
             setSession(session);
             setUser(session?.user ?? null);
+
             if (session?.user) {
-                fetchProfile(session.user.id);
+                setLoading(true); // Ensure loading is true while fetching profile
+                await fetchProfile(session.user.id);
             } else {
                 setProfile(null);
                 setFamily(null);
+                setMyFamilies([]);
             }
             setLoading(false);
         });
@@ -113,12 +169,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         await supabase.auth.signOut();
         setProfile(null);
         setFamily(null);
+        setMyFamilies([]);
         setUser(null);
         setSession(null);
     };
 
+    const leaveFamily = async (targetFamilyId: string) => {
+        try {
+            setLoading(true);
+            const { error } = await supabase.rpc('leave_family', { target_family_id: targetFamilyId });
+            if (error) throw error;
+
+            await refreshProfile();
+        } catch (err: any) {
+            console.error("Error leaving family:", err);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ session, user, profile, family, loading, refreshProfile, signOut }}>
+        <AuthContext.Provider value={{ session, user, profile, family, myFamilies, loading, refreshProfile, signOut, switchFamily, leaveFamily }}>
             {children}
         </AuthContext.Provider>
     );

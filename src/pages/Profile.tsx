@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
-import { Trophy, Flame, Star, Copy, Users, Check, Edit2 } from 'lucide-react';
+import { Trophy, Flame, Star, Copy, Users, Check, Edit2, Plus, ArrowRightLeft } from 'lucide-react';
 import type { Family } from '../types';
 import { calculateBalances, type ExpenseSplit, type Settlement } from '../lib/expense-utils';
 import { Toast, type ToastType } from '../components/ui/Toast';
@@ -17,84 +18,73 @@ interface HistoryItem {
 }
 
 export default function Profile() {
-    const { profile, signOut, refreshProfile } = useAuth();
+    const { profile, family, myFamilies, signOut, refreshProfile, switchFamily, leaveFamily } = useAuth();
+    const navigate = useNavigate();
     const [totalPoints, setTotalPoints] = useState(0);
     const [streak, setStreak] = useState(0);
     const [history, setHistory] = useState<HistoryItem[]>([]);
     const [graphData, setGraphData] = useState<{ day: string; points: number }[]>([]);
-    const [family, setFamily] = useState<Family | null>(null);
+    // Use local family state if needed, but context 'family' is primary. 
+    // keeping local distinct for specific edits (like currency)
+    const [localFamily, setLocalFamily] = useState<Family | null>(null);
     const [kids, setKids] = useState<{ id: string; display_name: string; balance: number }[]>([]);
     const [copied, setCopied] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+    const [leaveModal, setLeaveModal] = useState({ isOpen: false, familyId: '', familyName: '' });
+    const [isLeaving, setIsLeaving] = useState(false);
+
+    useEffect(() => {
+        if (family) setLocalFamily(family);
+    }, [family]);
 
     const processStats = (data: HistoryItem[]) => {
-        // Use local time for "Today"
         const today = new Date();
-        const getLocalYYYYMMDD = (d: Date) => d.toLocaleDateString('en-CA'); // 'en-CA' gives YYYY-MM-DD in local time
+        const getLocalYYYYMMDD = (d: Date) => d.toLocaleDateString('en-CA');
 
         const todayKey = getLocalYYYYMMDD(today);
-
-        // Group points by date 'YYYY-MM-DD' (Local Time)
         const pointsByDate: Record<string, number> = {};
         const activeDates = new Set<string>();
 
         data.forEach(item => {
-            // Treat database timestamps as if they happened in local time for display purposes
-            // or just convert normally. `new Date(item.date)` converts UTC string to Local Date object.
             const date = new Date(item.date);
             const dateKey = getLocalYYYYMMDD(date);
-
             pointsByDate[dateKey] = (pointsByDate[dateKey] || 0) + (item.points || 0);
             activeDates.add(dateKey);
         });
 
-        // Generate last 7 days for Graph
         const last7Days = [];
         for (let i = 6; i >= 0; i--) {
             const d = new Date();
             d.setDate(today.getDate() - i);
             const dateKey = getLocalYYYYMMDD(d);
             last7Days.push({
-                day: d.toLocaleDateString('en-US', { weekday: 'short' }), // Mon, Tue
+                day: d.toLocaleDateString('en-US', { weekday: 'short' }),
                 points: pointsByDate[dateKey] || 0
             });
         }
         setGraphData(last7Days);
 
-        // Calculate Streak (Consecutive Days backward from today)
         let currentStreak = 0;
-        let checkDate = new Date(); // Start checking from Today locally
-
-        // If no activity today yet, we can check yesterday to seeing if streak is kept alive
-        // But strict streak means: Activity Today OR Yesterday (to continue).
-        // If I did something yesterday, streak is 1. If I do something today, streak becomes 2.
-        // If I did nothing yesterday, streak is broken.
-
-        // Algorithm:
-        // 1. Check Today. If active, count ++, move to yesterday.
-        // 2. If NOT active Today, check Yesterday. If active, count ++ (start streak from 1), move to day before.
-        // 3. If NOT active Yesterday either -> Streak is 0.
+        let checkDate = new Date();
 
         if (activeDates.has(todayKey)) {
             currentStreak++;
             checkDate.setDate(checkDate.getDate() - 1);
         } else {
-            // Check yesterday
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
             const yesterdayKey = getLocalYYYYMMDD(yesterday);
 
             if (activeDates.has(yesterdayKey)) {
                 currentStreak++;
-                checkDate = yesterday; // Start loop from yesterday
-                checkDate.setDate(checkDate.getDate() - 1); // Move to day before yesterday for loop
+                checkDate = yesterday;
+                checkDate.setDate(checkDate.getDate() - 1);
             } else {
                 setStreak(0);
                 return;
             }
         }
 
-        // Continue checking backwards
         while (true) {
             const key = getLocalYYYYMMDD(checkDate);
             if (activeDates.has(key)) {
@@ -104,7 +94,6 @@ export default function Profile() {
                 break;
             }
         }
-
         setStreak(currentStreak);
     };
 
@@ -112,82 +101,125 @@ export default function Profile() {
         if (!profile) return;
 
         const fetchStats = async () => {
-            // Fetch Family Details
-            if (profile.family_id) {
-                const { data: familyData } = await supabase
-                    .from('families')
-                    .select('*')
-                    .eq('id', profile.family_id)
-                    .single();
-                if (familyData) setFamily(familyData);
+            if (!profile) return;
 
-                // Fetch Kids in Family
-                const { data: kidsData } = await supabase
-                    .from('profiles')
-                    .select('id, display_name, balance')
-                    .eq('family_id', profile.family_id)
+            // 1. Kids (for active family parents)
+            if (profile.role === 'parent' && family) {
+                // Fetch Kids in Family (from family_members now)
+                const { data: kidsMembers } = await supabase
+                    .from('family_members')
+                    .select('balance, role, profile:profiles(id, display_name)')
+                    .eq('family_id', family.id)
                     .eq('role', 'child');
 
-                if (kidsData) setKids(kidsData);
+                if (kidsMembers) {
+                    const mappedKids = kidsMembers.map((m: any) => ({
+                        id: m.profile.id,
+                        display_name: m.profile.display_name,
+                        balance: m.balance
+                    }));
+                    setKids(mappedKids);
+                }
             }
 
-            // Fetch all completed chores for this user
-            const { data: choreData } = await supabase
-                .from('chores')
-                .select('*')
-                .eq('family_id', profile.family_id)
-                .eq('assigned_to', profile.id)
-                .eq('is_completed', true)
-                .order('created_at', { ascending: false });
+            // 2. Stats (Points) - Fetch from family_members for active family
+            // Exact mirror of Mobile Logic
+            if (family) {
+                const { data: myMember } = await supabase
+                    .from('family_members')
+                    .select('balance')
+                    .eq('profile_id', profile.id)
+                    .eq('family_id', family.id)
+                    .single();
 
-            // Fetch game scores
-            const { data: gameData } = await supabase
-                .from('game_scores')
-                .select('*')
-                .eq('family_id', profile.family_id)
-                .eq('profile_id', profile.id)
-                .order('played_at', { ascending: false });
+                if (myMember) {
+                    setTotalPoints(myMember.balance);
+                } else {
+                    setTotalPoints(0);
+                }
+            } else {
+                setTotalPoints(0);
+            }
 
-            if (choreData || gameData) {
-                // Combine history
-                const chores = (choreData || []).map(c => ({
-                    id: c.id,
-                    title: c.title,
-                    points: c.points,
-                    date: c.created_at,
-                    type: 'chore' as const
-                }));
-                const games = (gameData || []).map(g => ({
-                    id: g.id,
-                    title: `${g.game_id === 'quick-math' ? 'Quick Math' : g.game_id === 'memory-match' ? 'Memory Match' : g.game_id} (Lvl ${g.level})`,
-                    points: g.points,
-                    date: g.played_at,
-                    type: 'game' as const
-                }));
+            // 3. History
+            if (family) {
+                // Fetch all completed chores for this user
+                const { data: choreData } = await supabase
+                    .from('chores')
+                    .select('*')
+                    .eq('family_id', family.id)
+                    .eq('assigned_to', profile.id)
+                    .eq('is_completed', true)
+                    .order('created_at', { ascending: false });
 
-                const combinedHistory = [...chores, ...games].sort((a, b) =>
-                    new Date(b.date).getTime() - new Date(a.date).getTime()
-                );
+                // Fetch game scores
+                const { data: gameData } = await supabase
+                    .from('game_scores')
+                    .select('*')
+                    .eq('family_id', family.id)
+                    .eq('profile_id', profile.id)
+                    .order('played_at', { ascending: false });
 
-                setHistory(combinedHistory); // Note: history state type needs update to 'any' or union type locally
+                if (choreData || gameData) {
+                    const chores = (choreData || []).map(c => ({
+                        id: c.id,
+                        title: c.title,
+                        points: c.points,
+                        date: c.created_at,
+                        type: 'chore' as const
+                    }));
+                    const games = (gameData || []).map(g => ({
+                        id: g.id,
+                        title: `${g.game_id === 'quick-math' ? 'Quick Math' : g.game_id === 'memory-match' ? 'Memory Match' : g.game_id} (Lvl ${g.level})`,
+                        points: g.points,
+                        date: g.played_at,
+                        type: 'game' as const
+                    }));
 
-                // 1. Total Points (Now using live Balance)
-                const { data: profileVal } = await supabase.from('profiles').select('balance').eq('id', profile.id).single();
-                setTotalPoints(profileVal?.balance || 0);
+                    const combinedHistory = [...chores, ...games].sort((a, b) =>
+                        new Date(b.date).getTime() - new Date(a.date).getTime()
+                    );
 
-                // 2. Weekly Graph Data & Streak Calculation
-                processStats(combinedHistory);
+                    setHistory(combinedHistory);
+                    processStats(combinedHistory);
+                }
+            } else {
+                setHistory([]);
+                setGraphData([]);
             }
         };
 
         fetchStats();
-    }, [profile]);
+    }, [profile, family]); // Re-run when profile or family changes
 
     const copyCode = () => {
-        if (family?.secret_key) {
-            navigator.clipboard.writeText(family.secret_key);
+        if (localFamily?.secret_key) {
+            navigator.clipboard.writeText(localFamily.secret_key);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
+        }
+    };
+
+    const handleSwitchFamily = async (famId: string) => {
+        try {
+            await switchFamily(famId);
+            setToast({ message: "Switched family successfully", type: 'success' });
+        } catch (e) {
+            setToast({ message: "Failed to switch family", type: 'error' });
+        }
+    };
+
+    const handleLeaveFamily = async () => {
+        if (!leaveModal.familyId) return;
+        setIsLeaving(true);
+        try {
+            await leaveFamily(leaveModal.familyId);
+            setToast({ message: `Left ${leaveModal.familyName}`, type: 'success' });
+            setLeaveModal({ isOpen: false, familyId: '', familyName: '' });
+        } catch (e: any) {
+            setToast({ message: e.message || "Failed to leave family", type: 'error' });
+        } finally {
+            setIsLeaving(false);
         }
     };
 
@@ -203,16 +235,96 @@ export default function Profile() {
                 </div>
             </header>
 
-            {/* Family Info Card */}
-            {family && (
+            {/* My Families Section (Parent Only - Kids are restricted to single family view) */}
+            {profile?.role === 'parent' && (
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <h3 className="font-semibold text-slate-800 flex items-center gap-2 px-1">
+                            <Users size={18} className="text-violet-500" /> My Families
+                        </h3>
+                        <button
+                            onClick={() => navigate('/join-family')}
+                            className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition-colors"
+                        >
+                            Join / Create New
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3">
+                        {myFamilies.map((fam) => {
+                            const isActive = fam.id === family?.id;
+                            return (
+                                <div key={fam.id} className={`flex justify-between items-center p-3 rounded-xl border ${isActive ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-100'} shadow-sm`}>
+                                    <div>
+                                        <p className={`font-medium ${isActive ? 'text-indigo-900' : 'text-slate-700'}`}>{fam.name}</p>
+                                        <p className="text-xs text-slate-400 capitalize">{fam.membership_role || 'member'}</p>
+                                    </div>
+                                    {isActive ? (
+                                        <span className="text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-1 rounded-full flex items-center gap-1">
+                                            <Check size={12} /> Active
+                                        </span>
+                                    ) : (
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => handleSwitchFamily(fam.id)}
+                                                className="text-xs font-medium text-slate-500 hover:text-indigo-600 flex items-center gap-1 px-2 py-1 hover:bg-slate-50 rounded"
+                                            >
+                                                <ArrowRightLeft size={12} /> Switch
+                                            </button>
+                                            <button
+                                                onClick={() => setLeaveModal({ isOpen: true, familyId: fam.id, familyName: fam.name })}
+                                                className="text-xs font-medium text-red-400 hover:text-red-600 px-2 py-1 hover:bg-red-50 rounded"
+                                                title="Leave Family"
+                                            >
+                                                Leave
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+
+                        {myFamilies.length === 0 && (
+                            <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-center">
+                                <p className="text-sm text-slate-500 mb-2">You are not in any families yet.</p>
+                                <button onClick={() => navigate('/join-family')} className="text-sm font-medium text-indigo-600">Join or Create one</button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Leave Family Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={leaveModal.isOpen}
+                onClose={() => setLeaveModal(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={handleLeaveFamily}
+                title={`Leave ${leaveModal.familyName}?`}
+                message={
+                    <>
+                        <p>Are you sure you want to leave <b>{leaveModal.familyName}</b>?</p>
+                        <div className="bg-red-50 text-red-700 p-3 rounded-lg text-xs border border-red-100 mt-2 flex gap-2 items-start">
+                            <div className="font-bold">⚠️</div>
+                            <div>
+                                <b>Warning:</b> If you are the last member, this family and ALL its data (chores, notes, points) will be <b className="underline">permanently deleted</b>.
+                            </div>
+                        </div>
+                    </>
+                }
+                isLoading={isLeaving}
+            />
+
+
+            {/* Active Family Info Card */}
+            {localFamily && (
                 <Card className="bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white border-none">
                     <div className="flex flex-col gap-4">
                         <div className="min-w-0">
                             <div className="flex items-center gap-2 mb-1 opacity-90">
-                                <Users size={16} />
-                                <span className="text-sm font-medium">My Family</span>
+                                <Star size={16} />
+                                <span className="text-sm font-medium">Current Family Context</span>
                             </div>
-                            <h2 className="text-2xl font-bold truncate">{family.name}</h2>
+                            <h2 className="text-2xl font-bold truncate">{localFamily.name}</h2>
                         </div>
 
                         <div className="flex gap-3">
@@ -220,7 +332,7 @@ export default function Profile() {
                             <div className="bg-white/20 backdrop-blur-sm p-3 rounded-xl flex-1 flex items-center justify-between cursor-pointer hover:bg-white/30 transition-colors" onClick={copyCode}>
                                 <div className="text-xs uppercase tracking-wider font-semibold opacity-80">Invite Code</div>
                                 <div className="text-xl font-mono font-bold flex items-center gap-2">
-                                    {family.secret_key}
+                                    {localFamily.secret_key}
                                     {copied ? <Check size={16} className="text-green-300" /> : <Copy size={16} />}
                                 </div>
                             </div>
@@ -233,16 +345,11 @@ export default function Profile() {
                                         <Edit2 size={8} className="text-white opacity-50 group-hover:opacity-100 transition-opacity" />
                                     </div>
                                     <select
-                                        value={family.currency || 'INR'}
+                                        value={localFamily.currency || 'INR'}
                                         onChange={async (e) => {
                                             const newCurrency = e.target.value;
-
-                                            // Check for existing unsettled debts
-                                            const { data: expenses } = await supabase.from('expenses').select('*').eq('family_id', family.id);
-                                            const { data: settlements } = await supabase.from('settlements').select('*').eq('family_id', family.id);
-
-                                            // 1. If no expenses, safe to change.
-                                            // 2. If expenses exist, check if balances are cleared.
+                                            const { data: expenses } = await supabase.from('expenses').select('*').eq('family_id', localFamily.id);
+                                            const { data: settlements } = await supabase.from('settlements').select('*').eq('family_id', localFamily.id);
 
                                             if (expenses && expenses.length > 0) {
                                                 const expenseIds = expenses.map(e => e.id);
@@ -254,33 +361,26 @@ export default function Profile() {
                                                         splits as ExpenseSplit[],
                                                         settlements as Settlement[]
                                                     );
-                                                    // Check if any balance is significantly non-zero (debt exists)
                                                     const hasDebt = balances.some(b => Math.abs(b.amount) > 0.01);
 
                                                     if (hasDebt) {
-                                                        setToast({ message: "Cannot change currency: There are unsettled debts. Please settle all balances to zero first.", type: 'error' });
-                                                        e.target.value = family.currency || 'INR';
+                                                        setToast({ message: "Cannot change currency: Unsettled debts exist.", type: 'error' });
+                                                        e.target.value = localFamily.currency || 'INR';
                                                         return;
                                                     }
                                                 }
                                             }
 
-                                            // Proceed with update
                                             try {
-                                                // Optimistic update local
-                                                const oldCurrency = family.currency;
-                                                setFamily(prev => prev ? { ...prev, currency: newCurrency } : null);
-
-                                                const { error: updateError } = await supabase.from('families').update({ currency: newCurrency }).eq('id', family.id);
-
+                                                const oldCurrency = localFamily.currency;
+                                                setLocalFamily(prev => prev ? { ...prev, currency: newCurrency } : null);
+                                                const { error: updateError } = await supabase.from('families').update({ currency: newCurrency }).eq('id', localFamily.id);
                                                 if (updateError) {
-                                                    // Revert
-                                                    setFamily(prev => prev ? { ...prev, currency: oldCurrency } : null);
+                                                    setLocalFamily(prev => prev ? { ...prev, currency: oldCurrency } : null);
                                                     throw updateError;
                                                 }
-                                                // Refresh to be sure (and update global context)
                                                 await refreshProfile();
-                                                setToast({ message: "Currency updated successfully", type: 'success' });
+                                                setToast({ message: "Currency updated", type: 'success' });
                                             } catch (err) {
                                                 console.error(err);
                                                 setToast({ message: "Failed to update currency", type: 'error' });
@@ -300,15 +400,15 @@ export default function Profile() {
             )}
 
             {/* Parent ONLY: Add Child Section */}
-            {family && profile?.role === 'parent' && (
+            {localFamily && profile?.role === 'parent' && (
                 <>
-                    <AddChildSection family={family} />
+                    <AddChildSection family={localFamily} />
 
                     {/* Active Kids List */}
                     {kids.length > 0 && (
                         <div className="space-y-3">
                             <h3 className="font-semibold text-slate-800 flex items-center gap-2 px-1">
-                                <Users size={18} className="text-indigo-500" /> Active Kids
+                                <Users size={18} className="text-indigo-500" /> Active Kids (Current Family)
                             </h3>
                             <div className="grid grid-cols-1 gap-3">
                                 {kids.map(kid => (
@@ -357,7 +457,7 @@ export default function Profile() {
             <Card>
                 <h3 className="font-semibold text-slate-800 mb-4">Points Activity</h3>
                 <div className="h-48 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minHeight={100}>
                         <BarChart data={graphData}>
                             <XAxis
                                 dataKey="day"
@@ -428,20 +528,18 @@ function AddChildSection({ family }: { family: Family }) {
         setMsg('');
 
         try {
-            // Create a temp client to avoid signing out the parent
             const tempClient = createClient(
                 import.meta.env.VITE_SUPABASE_URL,
                 import.meta.env.VITE_SUPABASE_ANON_KEY,
                 {
                     auth: {
-                        persistSession: false, // Critical: Don't overwrite parent session
+                        persistSession: false,
                         autoRefreshToken: false,
                         detectSessionInUrl: false
                     }
                 }
             );
 
-            // Construct dummy email: username@kids.fcc (Username must be globally unique)
             const cleanUser = username.replace(/\s+/g, '').toLowerCase();
             const email = `${cleanUser}@kids.fcc`;
 
@@ -451,7 +549,7 @@ function AddChildSection({ family }: { family: Family }) {
                 options: {
                     data: {
                         display_name: username,
-                        role: 'child', // Crucial
+                        role: 'child',
                         family_id: family.id
                     }
                 }
@@ -463,7 +561,6 @@ function AddChildSection({ family }: { family: Family }) {
                 setUsername('');
                 setPassword('');
             }
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (err: any) {
             setMsg('Error: ' + err.message);
         } finally {
@@ -479,7 +576,7 @@ function AddChildSection({ family }: { family: Family }) {
                 </div>
                 <div>
                     <h3 className="font-semibold text-slate-700">Add Child Account</h3>
-                    <p className="text-xs text-slate-400">Create a restricted account for your kid</p>
+                    <p className="text-xs text-slate-400">Create a restricted account for your kid linked to this family</p>
                 </div>
             </Card>
         );
@@ -487,7 +584,7 @@ function AddChildSection({ family }: { family: Family }) {
 
     return (
         <Card className="p-4 bg-slate-50 border-slate-200">
-            <h3 className="font-semibold text-slate-800 mb-2">Create Child Account</h3>
+            <h3 className="font-semibold text-slate-800 mb-2">Create Child Account (for {family.name})</h3>
             <form onSubmit={handleCreateChild} className="space-y-3">
                 <Input
                     placeholder="Child's Name (e.g. Timmy)"
@@ -509,5 +606,48 @@ function AddChildSection({ family }: { family: Family }) {
                 </div>
             </form>
         </Card>
+    );
+}
+
+interface ConfirmationModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: () => void;
+    title: string;
+    message: React.ReactNode;
+    isLoading?: boolean;
+}
+
+function ConfirmationModal({ isOpen, onClose, onConfirm, title, message, isLoading }: ConfirmationModalProps) {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <Card className="w-full max-w-sm bg-white p-6 space-y-4 animate-in fade-in zoom-in duration-200">
+                <div className="space-y-2">
+                    <h3 className="text-lg font-bold text-slate-800">{title}</h3>
+                    <div className="text-sm text-slate-600 space-y-2">
+                        {message}
+                    </div>
+                </div>
+                <div className="flex gap-3 pt-2">
+                    <Button
+                        variant="secondary"
+                        onClick={onClose}
+                        disabled={isLoading}
+                        className="flex-1"
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        onClick={onConfirm}
+                        isLoading={isLoading}
+                        className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                    >
+                        Leave & Delete
+                    </Button>
+                </div>
+            </Card>
+        </div>
     );
 }

@@ -4,13 +4,30 @@ import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 export default function JoinFamilyScreen() {
-    const { user, refreshProfile, signOut } = useAuth();
+    const { user, refreshProfile, signOut, myFamilies } = useAuth();
+    const navigation = useNavigation<NativeStackNavigationProp<any>>();
     const [mode, setMode] = useState<'join' | 'create'>('join');
     const [familyName, setFamilyName] = useState('');
     const [secretKey, setSecretKey] = useState('');
     const [loading, setLoading] = useState(false);
+
+    const handleSuccess = () => {
+        if (myFamilies && myFamilies.length > 0) {
+            navigation.replace('Profile'); // Or navigate back if pushed
+        } else {
+            // Assuming user is in Auth stack or needs to go to Root
+            // If we are in the Auth stack, replacing with 'Root' might be needed if that is the main stack name
+            // For now, let's assume 'Root' or standard navigation structure.
+            // If this screen is inside 'Auth' stack, and we want to go to main app, we usually reset nav or replace.
+            // Let's try navigating to 'Root' which is common, or if not defined, it might need adjustment.
+            // Given the context, let's assume standard behavior is needed.
+            navigation.replace('Root');
+        }
+    };
 
     const handleCreate = async () => {
         if (!familyName) return;
@@ -18,24 +35,43 @@ export default function JoinFamilyScreen() {
         try {
             const generatedKey = Math.random().toString(36).substring(2, 8).toUpperCase();
 
+            // 1. Create Family
             const { data: family, error: familyError } = await supabase
                 .from('families')
                 .insert([{ name: familyName, secret_key: generatedKey }])
                 .select()
-                .maybeSingle();
+                .single();
 
             if (familyError) throw familyError;
-            if (!family) throw new Error("Family created but could not retrieve data.");
 
-            if (user) {
+            // 2. Add as Member (Parent) & Set Current Family
+            if (user && family) {
+                // Insert into family_members
+                const { error: memberError } = await supabase
+                    .from('family_members')
+                    .insert({
+                        profile_id: user.id,
+                        family_id: family.id,
+                        role: 'parent'
+                    });
+
+                if (memberError) {
+                    console.error("Error adding member:", memberError);
+                }
+
+                // Update Profile Context
                 const { error: profileError } = await supabase
                     .from('profiles')
-                    .update({ family_id: family.id })
+                    .update({
+                        current_family_id: family.id,
+                        family_id: family.id // Keep legacy sync
+                    })
                     .eq('id', user.id);
 
                 if (profileError) throw profileError;
 
                 await refreshProfile();
+                handleSuccess();
             }
         } catch (error: any) {
             Alert.alert('Error', error.message);
@@ -48,25 +84,18 @@ export default function JoinFamilyScreen() {
         if (!secretKey) return;
         setLoading(true);
         try {
-            const { data: family, error: familyError } = await supabase
-                .from('families')
-                .select('*')
-                .eq('secret_key', secretKey)
-                .maybeSingle();
+            const { data, error } = await supabase.rpc('join_family_by_code', {
+                secret_key_input: secretKey
+            });
 
-            if (familyError) throw familyError;
-            if (!family) throw new Error('Invalid Secret Key');
+            if (error) throw error;
 
-            if (user) {
-                const { error: profileError } = await supabase
-                    .from('profiles')
-                    .update({ family_id: family.id })
-                    .eq('id', user.id);
-
-                if (profileError) throw profileError;
-
-                await refreshProfile();
+            if (data && !data.success) {
+                throw new Error(data.error || 'Failed to join family');
             }
+
+            await refreshProfile();
+            handleSuccess();
         } catch (error: any) {
             Alert.alert('Error', error.message);
         } finally {
@@ -81,52 +110,63 @@ export default function JoinFamilyScreen() {
         >
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <View style={styles.header}>
-                    <Text style={styles.title}>Setup Family</Text>
-                    <Text style={styles.subtitle}>Join an existing family or start a new one.</Text>
+                    <Text style={styles.title}>Welcome!</Text>
+                    <Text style={styles.subtitle}>Join your family or create a new one to get started.</Text>
                 </View>
 
                 <View style={styles.card}>
-                    <View style={styles.toggleContainer}>
+                    <View style={styles.tabs}>
                         <TouchableOpacity
-                            style={[styles.toggleButton, mode === 'join' && styles.activeToggle]}
+                            style={[styles.tab, mode === 'join' && styles.activeTab]}
                             onPress={() => setMode('join')}
                         >
-                            <Text style={[styles.toggleText, mode === 'join' && styles.activeToggleText]}>Join Family</Text>
+                            <Text style={[styles.tabText, mode === 'join' && styles.activeTabText]}>Join Family</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                            style={[styles.toggleButton, mode === 'create' && styles.activeToggle]}
+                            style={[styles.tab, mode === 'create' && styles.activeTab]}
                             onPress={() => setMode('create')}
                         >
-                            <Text style={[styles.toggleText, mode === 'create' && styles.activeToggleText]}>Create New</Text>
+                            <Text style={[styles.tabText, mode === 'create' && styles.activeTabText]}>Create New</Text>
                         </TouchableOpacity>
                     </View>
 
-                    {mode === 'join' ? (
-                        <View style={styles.form}>
-                            <Input
-                                label="Family Secret Key"
-                                placeholder="Enter 6-character key"
-                                value={secretKey}
-                                onChangeText={(t) => setSecretKey(t.toUpperCase())}
-                            />
-                            <Text style={styles.hint}>Ask your family member for the key.</Text>
-                            <Button title="Join Family" onPress={handleJoin} isLoading={loading} style={styles.marginTop} />
-                        </View>
-                    ) : (
-                        <View style={styles.form}>
-                            <Input
-                                label="Family Name"
-                                placeholder="The Smiths"
-                                value={familyName}
-                                onChangeText={setFamilyName}
-                            />
-                            <Button title="Create Family" onPress={handleCreate} isLoading={loading} style={styles.marginTop} />
-                        </View>
-                    )}
+                    <View style={styles.form}>
+                        {mode === 'join' ? (
+                            <>
+                                <Input
+                                    label="Family Secret Key"
+                                    placeholder="Enter 6-character key"
+                                    value={secretKey}
+                                    onChangeText={(t) => setSecretKey(t.toUpperCase())}
+                                    autoCapitalize="characters"
+                                />
+                                <Text style={styles.helperText}>Ask your family member for the key found in their profile.</Text>
+                                <Button
+                                    title="Join Family"
+                                    onPress={handleJoin}
+                                    loading={loading}
+                                />
+                            </>
+                        ) : (
+                            <>
+                                <Input
+                                    label="Family Name"
+                                    placeholder=" The Smiths"
+                                    value={familyName}
+                                    onChangeText={setFamilyName}
+                                />
+                                <Button
+                                    title="Create Family"
+                                    onPress={handleCreate}
+                                    loading={loading}
+                                />
+                            </>
+                        )}
+                    </View>
                 </View>
 
-                <TouchableOpacity onPress={signOut} style={styles.logoutButton}>
-                    <Text style={styles.logoutText}>Sign Out</Text>
+                <TouchableOpacity onPress={signOut} style={styles.signOutBtn}>
+                    <Text style={styles.signOutText}>Sign Out</Text>
                 </TouchableOpacity>
 
             </ScrollView>
@@ -136,19 +176,18 @@ export default function JoinFamilyScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f8fafc' },
-    scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
-    header: { alignItems: 'center', marginBottom: 32 },
-    title: { fontSize: 24, fontWeight: 'bold', color: '#1e293b', marginBottom: 8 },
+    scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 20 },
+    header: { alignItems: 'center', marginBottom: 30 },
+    title: { fontSize: 28, fontWeight: 'bold', color: '#1e293b', marginBottom: 8 },
     subtitle: { fontSize: 16, color: '#64748b', textAlign: 'center' },
-    card: { backgroundColor: 'white', padding: 24, borderRadius: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 3 },
-    toggleContainer: { flexDirection: 'row', backgroundColor: '#f1f5f9', borderRadius: 12, padding: 4, marginBottom: 24 },
-    toggleButton: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
-    activeToggle: { backgroundColor: 'white', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
-    toggleText: { color: '#64748b', fontWeight: '500' },
-    activeToggleText: { color: '#6366f1' },
-    form: {},
-    hint: { fontSize: 12, color: '#94a3b8', marginTop: -12, marginBottom: 16 },
-    marginTop: { marginTop: 16 },
-    logoutButton: { marginTop: 24, alignItems: 'center' },
-    logoutText: { color: '#ef4444', fontWeight: '600' }
+    card: { backgroundColor: 'white', borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 5, overflow: 'hidden' },
+    tabs: { flexDirection: 'row', backgroundColor: '#f1f5f9', padding: 4 },
+    tab: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 16 },
+    activeTab: { backgroundColor: 'white', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
+    tabText: { fontSize: 14, fontWeight: '600', color: '#64748b' },
+    activeTabText: { color: '#4f46e5' },
+    form: { padding: 24, gap: 16 },
+    helperText: { fontSize: 12, color: '#94a3b8', marginTop: -12, marginBottom: 8 },
+    signOutBtn: { marginTop: 24, padding: 12, alignItems: 'center' },
+    signOutText: { color: '#ef4444', fontWeight: '600' }
 });

@@ -8,20 +8,20 @@ import { Plus, Trash2, Check, ShoppingCart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Groceries() {
-    const { profile } = useAuth();
+    const { profile, family } = useAuth();
     const [items, setItems] = useState<Grocery[]>([]);
     const [newItem, setNewItem] = useState('');
     const [newQuantity, setNewQuantity] = useState('');
 
     useEffect(() => {
-        if (!profile?.family_id) return;
+        if (!family?.id) return;
 
         // Initial Fetch
         const fetchGroceries = async () => {
             const { data } = await supabase
                 .from('groceries')
                 .select('*')
-                .eq('family_id', profile.family_id)
+                .eq('family_id', family.id)
                 .order('created_at', { ascending: false });
 
             if (data) setItems(data);
@@ -32,14 +32,14 @@ export default function Groceries() {
         // Real-time Subscription
         // Use a unique channel for this family to ensure isolation
         const channel = supabase
-            .channel(`groceries:${profile.family_id}`)
+            .channel(`groceries:${family.id}`)
             .on(
                 'postgres_changes',
                 {
                     event: '*',
                     schema: 'public',
                     table: 'groceries',
-                    filter: `family_id=eq.${profile.family_id}`,
+                    filter: `family_id=eq.${family.id}`,
                 },
                 (payload) => {
                     console.log("Realtime event received:", payload);
@@ -64,11 +64,11 @@ export default function Groceries() {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [profile?.family_id]);
+    }, [family?.id]);
 
     const addItem = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newItem.trim() || !profile?.family_id) return;
+        if (!newItem.trim() || !family?.id) return;
 
         const pendingItem = newItem;
         const pendingQuantity = newQuantity;
@@ -80,7 +80,7 @@ export default function Groceries() {
             {
                 item_name: pendingItem,
                 quantity: pendingQuantity || null, // handle empty string as null
-                family_id: profile.family_id,
+                family_id: family.id,
                 is_purchased: false,
                 added_by: profile.id,
             },

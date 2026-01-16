@@ -7,10 +7,13 @@ interface AuthContextType {
     session: Session | null;
     user: User | null;
     profile: Profile | null;
-    family: any | null; // Added family
+    family: any | null;
+    myFamilies: any[]; // List of families the user belongs to
     loading: boolean;
     signOut: () => Promise<void>;
     refreshProfile: () => Promise<void>;
+    switchFamily: (familyId: string) => Promise<void>;
+    leaveFamily: (familyId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -19,11 +22,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
     const [profile, setProfile] = useState<Profile | null>(null);
-    const [family, setFamily] = useState<any | null>(null); // Added family state
+    const [family, setFamily] = useState<any | null>(null);
+    const [myFamilies, setMyFamilies] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
     // DEBUG: Verify new code is loaded
-    useEffect(() => { console.log("AUTH CONTEXT - FAMILY CURRENCY LOADED"); }, []);
+    useEffect(() => { console.log("AUTH CONTEXT - MULTI-FAMILY LOADED"); }, []);
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -44,8 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (session?.user) {
                 fetchProfile(session.user.id).catch(console.error);
             } else {
-                setProfile(null);
-                setFamily(null);
+                resetState();
                 setLoading(false);
             }
         });
@@ -53,57 +56,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return () => subscription.unsubscribe();
     }, []);
 
+    const resetState = () => {
+        setProfile(null);
+        setFamily(null);
+        setMyFamilies([]);
+    };
+
     const fetchProfile = async (userId: string) => {
         try {
-            const { data, error } = await supabase
+            // 1. Fetch Profile
+            const { data: profileData, error } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', userId)
                 .single();
 
             if (error) {
-                // Self-Healing
+                // Self-Healing: Create if missing
                 if (error.code === 'PGRST116') {
-                    // ... existing create logic ...
-                    // (Omitting full recreation logic here for brevity in replace, but ideally should be kept. 
-                    // Since I am replacing the whole function, I must check if I can keep it or if I should just use the existing logic.)
-                    // Actually, I will just modify the SELECT in fetchProfile to also get family? No, family is a separate table, profile has family_id.
-
-                    // RE-INSERTING THE EXISTING LOGIC PROPERLY:
-                    console.log("Profile missing, creating default profile...");
-                    const { data: { user } } = await supabase.auth.getUser();
-                    const displayName = user?.user_metadata?.display_name || 'New User';
-                    const role = user?.user_metadata?.role || 'parent';
-                    const familyId = user?.user_metadata?.family_id || null;
-
-                    const { data: newProfile, error: insertError } = await supabase
-                        .from('profiles')
-                        .insert({
-                            id: userId,
-                            display_name: displayName,
-                            role: role,
-                            family_id: familyId
-                        })
-                        .select()
-                        .single();
-
-                    if (insertError) throw insertError;
-                    setProfile(newProfile);
-
-                    if (newProfile.family_id) {
-                        const { data: familyData } = await supabase.from('families').select('*').eq('id', newProfile.family_id).single();
-                        setFamily(familyData);
-                    }
+                    console.log("Profile missing, creating default...");
+                    await createDefaultProfile(userId);
                     return;
                 }
                 throw error;
-            } else {
-                setProfile(data);
-                if (data.family_id) {
-                    const { data: familyData } = await supabase.from('families').select('*').eq('id', data.family_id).single();
-                    setFamily(familyData);
-                }
             }
+
+            setProfile(profileData);
+
+            // 2. Fetch Current Family
+            // Use current_family_id if available, otherwise fallback to legacy family_id
+            const activeFamilyId = profileData.current_family_id || profileData.family_id;
+
+            if (activeFamilyId) {
+                const { data: familyData } = await supabase
+                    .from('families')
+                    .select('*')
+                    .eq('id', activeFamilyId)
+                    .single();
+                setFamily(familyData);
+            } else {
+                setFamily(null);
+            }
+
+            // 3. Fetch All Families (via family_members)
+            await fetchMyFamilies(userId);
+
         } catch (err) {
             console.error('Error in fetchProfile:', err);
         } finally {
@@ -111,10 +108,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     };
 
+    const fetchMyFamilies = async (userId: string) => {
+        const { data, error } = await supabase
+            .from('family_members')
+            .select('family:families(*), role')
+            .eq('profile_id', userId);
+
+        if (data) {
+            // Flatten structure
+            const familiesList = data.map((item: any) => ({
+                ...item.family,
+                membership_role: item.role
+            }));
+            setMyFamilies(familiesList);
+        }
+    };
+
+    const createDefaultProfile = async (userId: string) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        const displayName = user?.user_metadata?.display_name || 'New User';
+        const role = user?.user_metadata?.role || 'parent';
+        const familyId = user?.user_metadata?.family_id || null;
+
+        const { data: newProfile, error } = await supabase
+            .from('profiles')
+            .insert({
+                id: userId,
+                display_name: displayName,
+                role: role,
+                family_id: familyId,
+                current_family_id: familyId
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error("Error creating profile:", error);
+            return;
+        }
+
+        setProfile(newProfile);
+
+        const activeFamilyId = newProfile.current_family_id || newProfile.family_id;
+        if (activeFamilyId) {
+            const { data: familyData } = await supabase
+                .from('families')
+                .select('*')
+                .eq('id', activeFamilyId)
+                .single();
+            setFamily(familyData);
+        }
+    };
+
     const signOut = async () => {
         await supabase.auth.signOut();
-        setProfile(null);
-        setFamily(null);
+        resetState();
         setUser(null);
         setSession(null);
     };
@@ -125,8 +173,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     }
 
+    const switchFamily = async (targetFamilyId: string) => {
+        try {
+            setLoading(true);
+            const { error } = await supabase.rpc('switch_family', { target_family_id: targetFamilyId });
+            if (error) throw error;
+
+            // Reload profile and family
+            await refreshProfile();
+        } catch (err: any) {
+            console.error("Error switching family:", err);
+            throw err; // Let UI handle alert
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    const leaveFamily = async (targetFamilyId: string) => {
+        try {
+            setLoading(true);
+            const { error } = await supabase.rpc('leave_family', { target_family_id: targetFamilyId });
+            if (error) throw error;
+
+            await refreshProfile();
+        } catch (err: any) {
+            console.error("Error leaving family:", err);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    }
+
     return (
-        <AuthContext.Provider value={{ session, user, profile, family, loading, signOut, refreshProfile }}>
+        <AuthContext.Provider value={{ session, user, profile, family, myFamilies, loading, signOut, refreshProfile, switchFamily, leaveFamily }}>
             {children}
         </AuthContext.Provider>
     );

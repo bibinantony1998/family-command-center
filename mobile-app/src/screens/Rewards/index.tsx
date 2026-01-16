@@ -20,30 +20,30 @@ const ICONS: Record<string, any> = {
 
 export default function RewardsScreen() {
     // ... context
-    const { profile } = useAuth();
+    const { profile, family } = useAuth();
     const [rewards, setRewards] = useState<Reward[]>([]);
     const [refreshing, setRefreshing] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     // ... fetchRewards, etc. (unchanged)
     const fetchRewards = async () => {
-        if (!profile?.family_id) return;
+        if (!family?.id) return;
         const { data } = await supabase
             .from('rewards')
             .select('*')
-            .eq('family_id', profile.family_id)
+            .eq('family_id', family.id)
             .order('cost', { ascending: true });
         if (data) setRewards(data);
     };
 
     useEffect(() => {
-        fetchRewards();
-    }, [profile?.family_id]);
+        if (family?.id) fetchRewards();
+    }, [family?.id]);
 
     const handleAddReward = async (name: string, cost: number, icon: string) => {
-        if (!profile?.family_id) return;
+        if (!family?.id) return;
         const { data, error } = await supabase.from('rewards').insert([{
-            name, cost, icon, family_id: profile.family_id
+            name, cost, icon, family_id: family.id
         }]).select().single();
 
         if (error) Alert.alert('Error', error.message);

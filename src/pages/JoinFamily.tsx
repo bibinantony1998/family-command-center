@@ -1,17 +1,29 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 
 export default function JoinFamily() {
-    const { user, refreshProfile } = useAuth();
+    const { user, refreshProfile, myFamilies } = useAuth();
+    const navigate = useNavigate();
     const [mode, setMode] = useState<'join' | 'create'>('join');
     const [familyName, setFamilyName] = useState('');
     const [secretKey, setSecretKey] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const handleSuccess = () => {
+        // If they already had families before this action, go back to profile
+        // If this is their first family, go to dashboard
+        if (myFamilies && myFamilies.length > 0) {
+            navigate('/profile');
+        } else {
+            navigate('/');
+        }
+    };
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -22,64 +34,47 @@ export default function JoinFamily() {
             const generatedKey = Math.random().toString(36).substring(2, 8).toUpperCase();
 
             // 1. Create Family
-            // Use maybeSingle() to avoid crashing if RLS hides the result
             const { data: family, error: familyError } = await supabase
                 .from('families')
                 .insert([{ name: familyName, secret_key: generatedKey }])
                 .select()
-                .maybeSingle();
+                .single();
 
             if (familyError) throw familyError;
 
-            if (!family) {
-                throw new Error("Family created, but RLS blocked reading it. Run the 'fix_rls.sql' script in Supabase.");
-            }
+            // 2. Add as Member (Parent) & Set Current Family
+            if (user && family) {
+                // Insert into family_members
+                const { error: memberError } = await supabase
+                    .from('family_members')
+                    .insert({
+                        profile_id: user.id,
+                        family_id: family.id,
+                        role: 'parent'
+                    });
 
-            if (user) {
-                // 2. Update Profile to link to Family
-                const { data: updatedProfile, error: profileError } = await supabase
+                if (memberError) {
+                    console.error("Error adding member:", memberError);
+                }
+
+                // Update Profile Context
+                const { error: profileError } = await supabase
                     .from('profiles')
-                    .update({ family_id: family.id })
-                    .eq('id', user.id)
-                    .select()
-                    .maybeSingle();
+                    .update({
+                        current_family_id: family.id,
+                        family_id: family.id // Keep legacy sync
+                    })
+                    .eq('id', user.id);
 
                 if (profileError) throw profileError;
 
-                // 3. Auto-Heal: If profile update returned nothing, the profile might be missing.
-                if (!updatedProfile) {
-                    console.log("Profile update returned no data. Attempting to create profile...");
-
-                    // Try to insert the profile (Upsert)
-                    const { error: insertError } = await supabase
-                        .from('profiles')
-                        .insert({
-                            id: user.id,
-                            display_name: user.user_metadata?.display_name || 'Parent',
-                            role: 'parent',
-                            family_id: family.id
-                        })
-                        .select()
-                        .maybeSingle();
-
-                    if (insertError) {
-                        console.error("Auto-heal failed:", insertError);
-                        throw new Error("Could not update or create profile. Please run 'nuclear_fix_profiles.sql' in Supabase.");
-                    }
-                }
-
                 await refreshProfile();
+                handleSuccess();
             }
 
         } catch (err: any) {
-            console.error("JoinFamily Error:", err);
-            if (err instanceof Error) {
-                setError(err.message);
-            } else if (typeof err === 'object' && err !== null && 'message' in err) {
-                setError(err.message);
-            } else {
-                setError("An unexpected error occurred");
-            }
+            console.error("Create Family Error:", err);
+            setError(err.message || "Failed to create family");
         } finally {
             setLoading(false);
         }
@@ -91,53 +86,22 @@ export default function JoinFamily() {
         setError(null);
 
         try {
-            const { data: family, error: familyError } = await supabase
-                .from('families')
-                .select('*')
-                .eq('secret_key', secretKey)
-                .maybeSingle();
+            const { data, error } = await supabase.rpc('join_family_by_code', {
+                secret_key_input: secretKey
+            });
 
-            if (familyError) throw familyError;
-            if (!family) throw new Error('Invalid Secret Key');
+            if (error) throw error;
 
-            if (user) {
-                const { data: updatedProfile, error: profileError } = await supabase
-                    .from('profiles')
-                    .update({ family_id: family.id })
-                    .eq('id', user.id)
-                    .select()
-                    .maybeSingle();
-
-                if (profileError) throw profileError;
-
-                if (!updatedProfile) {
-                    // Auto-heal for Join as well
-                    const { error: insertError } = await supabase
-                        .from('profiles')
-                        .insert({
-                            id: user.id,
-                            display_name: user.user_metadata?.display_name || 'Parent',
-                            role: 'parent',
-                            family_id: family.id
-                        });
-
-                    if (insertError) {
-                        throw new Error("Could not join family. Profile missing.");
-                    }
-                }
-
-                await refreshProfile();
+            if (data && !data.success) {
+                throw new Error(data.error || 'Failed to join family');
             }
+
+            await refreshProfile();
+            handleSuccess();
 
         } catch (err: any) {
-            console.error("JoinFamily Error:", err);
-            if (err instanceof Error) {
-                setError(err.message || 'Failed to join family');
-            } else if (typeof err === 'object' && err !== null && 'message' in err) {
-                setError(err.message);
-            } else {
-                setError('Failed to join family');
-            }
+            console.error("Join Family Error:", err);
+            setError(err.message || 'Failed to join family');
         } finally {
             setLoading(false);
         }

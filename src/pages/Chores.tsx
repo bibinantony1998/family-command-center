@@ -9,18 +9,18 @@ import confetti from 'canvas-confetti';
 import { AddChoreModal } from '../components/chores/AddChoreModal';
 
 export default function Chores() {
-    const { profile } = useAuth();
+    const { profile, family } = useAuth();
     const [chores, setChores] = useState<Chore[]>([]);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
     useEffect(() => {
-        if (!profile?.family_id) return;
+        if (!family?.id) return;
 
         const fetchChores = async () => {
             const { data } = await supabase
                 .from('chores')
                 .select('*')
-                .eq('family_id', profile.family_id)
+                .eq('family_id', family.id)
                 .order('created_at', { ascending: false });
             if (data) setChores(data);
         };
@@ -28,8 +28,8 @@ export default function Chores() {
         fetchChores();
 
         // Subscribe to changes
-        const channel = supabase.channel(`chores:${profile.family_id}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'chores', filter: `family_id=eq.${profile.family_id}` },
+        const channel = supabase.channel(`chores:${family.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'chores', filter: `family_id=eq.${family.id}` },
                 (payload) => {
                     if (payload.eventType === 'INSERT') {
                         const newChore = payload.new as Chore;
@@ -44,7 +44,7 @@ export default function Chores() {
             .subscribe();
 
         return () => { supabase.removeChannel(channel) };
-    }, [profile?.family_id]);
+    }, [family?.id]);
 
     const toggleChore = async (chore: Chore) => {
         if (!profile) return;
@@ -81,13 +81,13 @@ export default function Chores() {
     };
 
     const handleAddChore = async (title: string, points: number, assignedTo: string | null) => {
-        if (!profile?.family_id) return;
+        if (!family?.id) return;
 
         const { data, error } = await supabase.from('chores').insert([{
             title,
             points,
             assigned_to: assignedTo,
-            family_id: profile.family_id,
+            family_id: family.id,
             is_completed: false
         }])
             .select()

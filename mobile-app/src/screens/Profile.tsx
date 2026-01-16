@@ -1,18 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Modal, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { GradientCard } from '../components/ui/GradientCard';
-import { LogOut, User, Shield, CreditCard, Users, Star, Trophy, Copy, Check, ChevronLeft } from 'lucide-react-native';
+import { LogOut, User, Shield, CreditCard, Users, Star, Trophy, Copy, Check, ChevronLeft, ArrowLeftRight, Plus, Edit2, X } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { PointsChart } from '../components/PointsChart';
-
 import { AddKidModal } from '../components/profile/AddKidModal';
-import { Plus, Edit2, X } from 'lucide-react-native';
 import { Toast, ToastType } from '../components/ui/Toast';
-import { calculateBalances, type ExpenseSplit, type Settlement } from '../lib/expense-utils';
+import { calculateBalances } from '../lib/expense-utils';
 import { supabase } from '../lib/supabase';
 
 interface HistoryItem {
@@ -24,12 +22,33 @@ interface HistoryItem {
 }
 
 export default function ProfileScreen() {
-    const { profile, user, signOut } = useAuth();
+    const { profile, user, signOut, family, myFamilies, switchFamily, leaveFamily } = useAuth();
     const [loading, setLoading] = useState(false);
-    const navigation = useNavigation();
+    const navigation = useNavigation<any>();
     const [stats, setStats] = useState({ points: 0, streak: 0 });
     const [kids, setKids] = useState<any[]>([]);
-    const [family, setFamily] = useState<any>(null);
+
+    // Leave Family Logic
+    const [leaveModal, setLeaveModal] = useState({ isOpen: false, familyId: '', familyName: '' });
+    const [isLeaving, setIsLeaving] = useState(false);
+
+    const handleLeaveFamily = async () => {
+        if (!leaveModal.familyId) return;
+        setIsLeaving(true);
+        try {
+            await leaveFamily(leaveModal.familyId);
+            setToast({ message: `Left ${leaveModal.familyName}`, type: 'success' });
+            setLeaveModal({ isOpen: false, familyId: '', familyName: '' });
+        } catch (e: any) {
+            Alert.alert('Error', e.message || "Failed to leave family");
+        } finally {
+            setIsLeaving(false);
+        }
+    };
+
+    // Use context family as primary, but keep local for immediate updates if needed (though context should suffice)
+    // We will just use 'family' from context directly.
+
     const [history, setHistory] = useState<HistoryItem[]>([]);
     const [isAddKidOpen, setIsAddKidOpen] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -42,73 +61,89 @@ export default function ProfileScreen() {
 
     const fetchData = async () => {
         if (!profile) return;
-        const supabase = (await import('../lib/supabase')).supabase;
 
-        // 1. Family
-        if (profile.family_id) {
-            const { data: fData } = await supabase.from('families').select('*').eq('id', profile.family_id).single();
-            if (fData) setFamily(fData);
+        // 1. Kids (for active family parents)
+        if (profile.role === 'parent' && family) {
+            const { data: kData } = await supabase
+                .from('family_members')
+                .select('balance, role, profile:profiles(*)')
+                .eq('family_id', family.id)
+                .eq('role', 'child');
 
-            // 2. Kids (for parents)
-            if (profile.role === 'parent') {
-                const { data: kData } = await supabase.from('profiles').select('*').eq('family_id', profile.family_id).eq('role', 'child');
-                if (kData) setKids(kData);
+            if (kData) {
+                const mappedKids = kData.map((m: any) => ({
+                    ...m.profile,
+                    balance: m.balance
+                }));
+                setKids(mappedKids);
             }
         }
 
-        // 3. Stats (Points & Streak)
-        const { data: pData } = await supabase.from('profiles').select('balance').eq('id', profile.id).single();
-        const points = pData?.balance || 0;
+        // 2. Stats (Points & Streak)
+        // const { data: pData } = await supabase.from('profiles').select('balance').eq('id', profile.id).single();
+        // const points = pData?.balance || 0;
+
+        // NEW: Fetch from family_members for active family
+        let points = 0;
+        if (family) {
+            const { data: memberData } = await supabase
+                .from('family_members')
+                .select('balance')
+                .eq('profile_id', profile.id)
+                .eq('family_id', family.id)
+                .single();
+            points = memberData?.balance || 0;
+        }
         setStats({ points, streak: 0 });
 
-        // 4. History (Recent Achievements)
-        // Fetch completed chores
-        const { data: choreData } = await supabase
-            .from('chores')
-            .select('*')
-            .eq('family_id', profile.family_id)
-            .eq('assigned_to', profile.id)
-            .eq('is_completed', true)
-            .order('created_at', { ascending: false })
-            .limit(5);
+        // 3. History (Recent Achievements)
+        if (family) {
+            const { data: choreData } = await supabase
+                .from('chores')
+                .select('*')
+                .eq('family_id', family.id)
+                .eq('assigned_to', profile.id)
+                .eq('is_completed', true)
+                .order('created_at', { ascending: false })
+                .limit(5);
 
-        // Fetch game scores
-        const { data: gameData } = await supabase
-            .from('game_scores')
-            .select('*')
-            .eq('family_id', profile.family_id)
-            .eq('profile_id', profile.id)
-            .order('played_at', { ascending: false })
-            .limit(5);
+            const { data: gameData } = await supabase
+                .from('game_scores')
+                .select('*')
+                .eq('family_id', family.id)
+                .eq('profile_id', profile.id)
+                .order('played_at', { ascending: false })
+                .limit(5);
 
-        const chores = (choreData || []).map((c: any) => ({
-            id: c.id,
-            title: c.title,
-            points: c.points,
-            date: c.created_at,
-            type: 'chore' as const
-        }));
+            const chores = (choreData || []).map((c: any) => ({
+                id: c.id,
+                title: c.title,
+                points: c.points,
+                date: c.created_at,
+                type: 'chore' as const
+            }));
 
-        const games = (gameData || []).map((g: any) => ({
-            id: g.id,
-            title: `${g.game_id.replace('-', ' ')} (Lvl ${g.level})`,
-            points: g.points,
-            date: g.played_at,
-            type: 'game' as const
-        }));
+            const games = (gameData || []).map((g: any) => ({
+                id: g.id,
+                title: `${g.game_id.replace('-', ' ')} (Lvl ${g.level})`,
+                points: g.points,
+                date: g.played_at,
+                type: 'game' as const
+            }));
 
-        const combined = [...chores, ...games].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
-        setHistory(combined);
+            const combined = [...chores, ...games].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+            setHistory(combined);
+        } else {
+            setHistory([]);
+        }
     };
 
     React.useEffect(() => {
         fetchData();
-    }, [profile]);
+    }, [profile, family]);
 
     const copyCode = () => {
         if (family?.secret_key) {
-            // In React Native, we'd use Clipboard.setString(family.secret_key);
-            // But we need to import Clipboard first. For now, let's just alert.
             Alert.alert('Copied!', `Family Code: ${family.secret_key}`);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
@@ -126,6 +161,15 @@ export default function ProfileScreen() {
         }
     };
 
+    const handleSwitchFamily = async (famId: string) => {
+        try {
+            await switchFamily(famId);
+            setToast({ message: "Switched family successfully", type: 'success' });
+        } catch (e) {
+            setToast({ message: "Failed to switch family", type: 'error' });
+        }
+    };
+
     const handleUpdateCurrency = async (newCurrency: string) => {
         if (!family?.id) return;
         setUpdatingCurrency(true);
@@ -135,8 +179,6 @@ export default function ProfileScreen() {
             const { data: expenses } = await supabase.from('expenses').select('*').eq('family_id', family.id);
             const { data: settlements } = await supabase.from('settlements').select('*').eq('family_id', family.id);
 
-            // 1. If no expenses, safe to change.
-            // 2. If expenses exist, check if balances are cleared.
             if (expenses && expenses.length > 0) {
                 const expenseIds = expenses.map((e: any) => e.id);
                 const { data: splits } = await supabase.from('expense_splits').select('*').in('expense_id', expenseIds);
@@ -147,11 +189,10 @@ export default function ProfileScreen() {
                         splits as any,
                         settlements as any
                     );
-                    // Check if any balance is significantly non-zero (debt exists)
                     const hasDebt = balances.some(b => Math.abs(b.amount) > 0.01);
 
                     if (hasDebt) {
-                        setToast({ message: "Cannot change currency: There are unsettled debts. Please settle all balances to zero first.", type: 'error' });
+                        setToast({ message: "Cannot change currency: Unsettled debts exist.", type: 'error' });
                         setUpdatingCurrency(false);
                         setIsCurrencyModalOpen(false);
                         return;
@@ -159,12 +200,13 @@ export default function ProfileScreen() {
                 }
             }
 
-            // Proceed with update
             const { error: updateError } = await supabase.from('families').update({ currency: newCurrency }).eq('id', family.id);
             if (updateError) throw updateError;
 
-            // Refresh
-            setFamily((prev: any) => ({ ...prev, currency: newCurrency }));
+            // Ideally context should auto-update, but we might need a manual refresh on context if it doesn't listen to realtime changes on family table
+            // AuthContext `refreshProfile` re-fetches family.
+            await switchFamily(family.id); // Hacky way to refresh current family data or just call refreshProfile if exposed
+
             setToast({ message: "Currency updated successfully", type: 'success' });
             setIsCurrencyModalOpen(false);
 
@@ -179,7 +221,7 @@ export default function ProfileScreen() {
     return (
         <SafeAreaView style={styles.safeArea} edges={['top']}>
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-            {/* Sticky Navigation Header */}
+
             <View style={styles.navBar}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
                     <ChevronLeft size={28} color="#1e293b" />
@@ -199,14 +241,72 @@ export default function ProfileScreen() {
                     <Text style={styles.role}>{profile?.role === 'parent' ? 'Parent / Admin' : 'Child Account'}</Text>
                 </View>
 
-                {/* Family Section - Moved to Top with Gradient */}
+                {/* My Families Section (Parent Only) */}
+                {profile?.role === 'parent' && (
+                    <View style={styles.section}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                            <Text style={styles.sectionTitle}>My Families</Text>
+                            <TouchableOpacity
+                                onPress={() => navigation.navigate('JoinFamily')}
+                                style={{ backgroundColor: '#e0e7ff', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}
+                            >
+                                <Text style={{ color: '#4338ca', fontWeight: 'bold', fontSize: 12 }}>Join / Create</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {myFamilies.length === 0 ? (
+                            <Card style={{ padding: 16, alignItems: 'center' }}>
+                                <Text style={{ color: '#94a3b8' }}>No families joined yet.</Text>
+                            </Card>
+                        ) : (
+                            <View style={{ gap: 8 }}>
+                                {myFamilies.map((fam) => {
+                                    const isActive = fam.id === family?.id;
+                                    return (
+                                        <View key={fam.id} style={[styles.familyRow, isActive && styles.activeFamilyRow]}>
+                                            <View>
+                                                <Text style={[styles.familyRowName, isActive && { color: '#4338ca' }]}>{fam.name}</Text>
+                                                <Text style={styles.familyRowRole}>{fam.membership_role || 'member'}</Text>
+                                            </View>
+                                            {isActive ? (
+                                                <View style={styles.activeBadge}>
+                                                    <Check size={12} color="#4338ca" />
+                                                    <Text style={styles.activeBadgeText}>Active</Text>
+                                                </View>
+                                            ) : (
+                                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                    <TouchableOpacity
+                                                        onPress={() => handleSwitchFamily(fam.id)}
+                                                        style={styles.switchBtn}
+                                                    >
+                                                        <ArrowLeftRight size={14} color="#64748b" style={{ marginRight: 4 }} />
+                                                        <Text style={styles.switchBtnText}>Switch</Text>
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity
+                                                        onPress={() => setLeaveModal({ isOpen: true, familyId: fam.id, familyName: fam.name })}
+                                                        style={[styles.switchBtn, { marginLeft: 8 }]}
+                                                    >
+                                                        <LogOut size={14} color="#ef4444" style={{ marginRight: 4 }} />
+                                                        <Text style={[styles.switchBtnText, { color: '#ef4444' }]}>Leave</Text>
+                                                    </TouchableOpacity>
+                                                </View>
+                                            )}
+                                        </View>
+                                    );
+                                })}
+                            </View>
+                        )}
+                    </View>
+                )}
+
+                {/* Active Family Details */}
                 {family && (
                     <View style={styles.section}>
                         <GradientCard style={styles.familyCard}>
                             <View>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4, opacity: 0.9 }}>
-                                    <Users size={16} color="white" style={{ marginRight: 6 }} />
-                                    <Text style={{ color: 'white', fontWeight: '500', fontSize: 14 }}>My Family</Text>
+                                    <Star size={16} color="white" style={{ marginRight: 6 }} />
+                                    <Text style={{ color: 'white', fontWeight: '500', fontSize: 14 }}>Current Family Context</Text>
                                 </View>
                                 <Text style={styles.familyName}>{family.name}</Text>
                             </View>
@@ -220,7 +320,6 @@ export default function ProfileScreen() {
                                     {copied ? <Check size={20} color="#16a34a" /> : <Copy size={20} color="#7c3aed" />}
                                 </TouchableOpacity>
 
-                                {/* Currency Edit for Parents */}
                                 {profile?.role === 'parent' && (
                                     <TouchableOpacity
                                         style={styles.currencyBox}
@@ -283,7 +382,7 @@ export default function ProfileScreen() {
                 )}
 
                 {/* Kids List (Parent Only) */}
-                {profile?.role === 'parent' && (
+                {profile?.role === 'parent' && family && (
                     <View style={styles.section}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                             <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Active Kids</Text>
@@ -371,6 +470,51 @@ export default function ProfileScreen() {
                     onSuccess={fetchData}
                 />
 
+                {/* Leave Confirmation Modal */}
+                <Modal
+                    visible={leaveModal.isOpen}
+                    transparent={true}
+                    animationType="fade"
+                    onRequestClose={() => setLeaveModal(prev => ({ ...prev, isOpen: false }))}
+                >
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContent}>
+                            <View style={styles.modalHeader}>
+                                <Text style={[styles.modalTitle, { color: '#ef4444' }]}>Leave Family?</Text>
+                                <TouchableOpacity onPress={() => setLeaveModal(prev => ({ ...prev, isOpen: false }))}>
+                                    <X size={24} color="#64748b" />
+                                </TouchableOpacity>
+                            </View>
+                            <Text style={styles.modalSubtext}>
+                                Are you sure you want to leave <Text style={{ fontWeight: 'bold' }}>{leaveModal.familyName}</Text>?
+                            </Text>
+
+                            <View style={{ backgroundColor: '#fef2f2', padding: 12, borderRadius: 8, marginBottom: 20, flexDirection: 'row', gap: 8 }}>
+                                <Text>⚠️</Text>
+                                <Text style={{ fontSize: 12, color: '#b91c1c', flex: 1 }}>
+                                    Warning: If you are the last member, this family and all its data will be <Text style={{ fontWeight: 'bold', textDecorationLine: 'underline' }}>permanently deleted</Text>.
+                                </Text>
+                            </View>
+
+                            <View style={{ flexDirection: 'row', gap: 12 }}>
+                                <Button
+                                    title="Cancel"
+                                    onPress={() => setLeaveModal(prev => ({ ...prev, isOpen: false }))}
+                                    variant="secondary"
+                                    style={{ flex: 1 }}
+                                />
+                                <Button
+                                    title="Leave & Delete"
+                                    onPress={handleLeaveFamily}
+                                    isLoading={isLeaving}
+                                    variant="destructive"
+                                    style={{ flex: 1 }}
+                                />
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
+
                 <View style={styles.section}>
                     <Button
                         title="Sign Out"
@@ -394,9 +538,7 @@ const styles = StyleSheet.create({
     backBtn: { padding: 4, marginLeft: -4 },
     scrollContent: { padding: 20 },
 
-    // Existing styles below...
-    container: { flex: 1, backgroundColor: '#f8fafc', padding: 20 },
-    header: { alignItems: 'center', marginTop: 10, marginBottom: 30 },
+    header: { alignItems: 'center', marginTop: 10, marginBottom: 24 },
     avatar: {
         width: 80, height: 80, borderRadius: 40, backgroundColor: '#e0e7ff',
         justifyContent: 'center', alignItems: 'center', marginBottom: 16,
@@ -406,7 +548,18 @@ const styles = StyleSheet.create({
     name: { fontSize: 24, fontWeight: 'bold', color: '#1e293b' },
     role: { fontSize: 16, color: '#64748b', marginTop: 4 },
     section: { marginBottom: 24 },
-    sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1e293b', marginBottom: 12 },
+    sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1e293b' },
+
+    // Family Rows
+    familyRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, backgroundColor: 'white', borderRadius: 12, borderWidth: 1, borderColor: '#f1f5f9' },
+    activeFamilyRow: { backgroundColor: '#eef2ff', borderColor: '#c7d2fe' },
+    familyRowName: { fontSize: 16, fontWeight: '600', color: '#334155' },
+    familyRowRole: { fontSize: 12, color: '#94a3b8', textTransform: 'capitalize' },
+    activeBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#e0e7ff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, gap: 4 },
+    activeBadgeText: { fontSize: 12, fontWeight: 'bold', color: '#4338ca' },
+    switchBtn: { flexDirection: 'row', alignItems: 'center', padding: 8 },
+    switchBtnText: { fontSize: 12, fontWeight: 'bold', color: '#64748b' },
+
     // Family Card
     familyCard: { padding: 20 },
     familyName: { fontSize: 24, fontWeight: 'bold', color: 'white', marginBottom: 16 },
