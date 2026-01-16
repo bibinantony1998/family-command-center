@@ -3,6 +3,22 @@ export interface Balance {
     amount: number;
 }
 
+export interface ExpenseSplit {
+    id: string;
+    expense_id: string;
+    profile_id: string;
+    amount: number;
+}
+
+export interface Settlement {
+    id: string;
+    payer_id: string;
+    receiver_id: string;
+    amount: number;
+    date: string;
+    family_id: string;
+}
+
 export function formatCurrency(amount: number, currency = 'USD'): string {
     return new Intl.NumberFormat('en-US', {
         style: 'currency',

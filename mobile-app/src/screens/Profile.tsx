@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
@@ -10,7 +10,10 @@ import { useNavigation } from '@react-navigation/native';
 import { PointsChart } from '../components/PointsChart';
 
 import { AddKidModal } from '../components/profile/AddKidModal';
-import { Plus } from 'lucide-react-native';
+import { Plus, Edit2, X } from 'lucide-react-native';
+import { Toast, ToastType } from '../components/ui/Toast';
+import { calculateBalances, type ExpenseSplit, type Settlement } from '../lib/expense-utils';
+import { supabase } from '../lib/supabase';
 
 interface HistoryItem {
     id: string;
@@ -30,6 +33,12 @@ export default function ProfileScreen() {
     const [history, setHistory] = useState<HistoryItem[]>([]);
     const [isAddKidOpen, setIsAddKidOpen] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+
+    // Currency Edit
+    const [isCurrencyModalOpen, setIsCurrencyModalOpen] = useState(false);
+    const [updatingCurrency, setUpdatingCurrency] = useState(false);
+    const currencies = ['INR', 'USD', 'EUR', 'GBP', 'CAD', 'AUD'];
 
     const fetchData = async () => {
         if (!profile) return;
@@ -117,8 +126,59 @@ export default function ProfileScreen() {
         }
     };
 
+    const handleUpdateCurrency = async (newCurrency: string) => {
+        if (!family?.id) return;
+        setUpdatingCurrency(true);
+
+        try {
+            // Check for existing unsettled debts
+            const { data: expenses } = await supabase.from('expenses').select('*').eq('family_id', family.id);
+            const { data: settlements } = await supabase.from('settlements').select('*').eq('family_id', family.id);
+
+            // 1. If no expenses, safe to change.
+            // 2. If expenses exist, check if balances are cleared.
+            if (expenses && expenses.length > 0) {
+                const expenseIds = expenses.map((e: any) => e.id);
+                const { data: splits } = await supabase.from('expense_splits').select('*').in('expense_id', expenseIds);
+
+                if (splits && settlements) {
+                    const balances = calculateBalances(
+                        expenses.map((e: any) => ({ id: e.id, paid_by: e.paid_by, amount: e.amount })),
+                        splits as any,
+                        settlements as any
+                    );
+                    // Check if any balance is significantly non-zero (debt exists)
+                    const hasDebt = balances.some(b => Math.abs(b.amount) > 0.01);
+
+                    if (hasDebt) {
+                        setToast({ message: "Cannot change currency: There are unsettled debts. Please settle all balances to zero first.", type: 'error' });
+                        setUpdatingCurrency(false);
+                        setIsCurrencyModalOpen(false);
+                        return;
+                    }
+                }
+            }
+
+            // Proceed with update
+            const { error: updateError } = await supabase.from('families').update({ currency: newCurrency }).eq('id', family.id);
+            if (updateError) throw updateError;
+
+            // Refresh
+            setFamily((prev: any) => ({ ...prev, currency: newCurrency }));
+            setToast({ message: "Currency updated successfully", type: 'success' });
+            setIsCurrencyModalOpen(false);
+
+        } catch (error: any) {
+            console.error(error);
+            setToast({ message: "Failed to update currency", type: 'error' });
+        } finally {
+            setUpdatingCurrency(false);
+        }
+    };
+
     return (
         <SafeAreaView style={styles.safeArea} edges={['top']}>
+            {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
             {/* Sticky Navigation Header */}
             <View style={styles.navBar}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -151,15 +211,75 @@ export default function ProfileScreen() {
                                 <Text style={styles.familyName}>{family.name}</Text>
                             </View>
 
-                            <TouchableOpacity style={styles.codeBox} onPress={copyCode}>
-                                <View>
-                                    <Text style={{ fontSize: 10, color: '#4c1d95', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 2 }}>Invite Code</Text>
-                                    <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#5b21b6', fontFamily: 'monospace' }}>{family.secret_key}</Text>
-                                </View>
-                                {copied ? <Check size={20} color="#16a34a" /> : <Copy size={20} color="#7c3aed" />}
-                            </TouchableOpacity>
+                            <View style={{ flexDirection: 'row', gap: 10 }}>
+                                <TouchableOpacity style={[styles.codeBox, { flex: 1 }]} onPress={copyCode}>
+                                    <View>
+                                        <Text style={{ fontSize: 10, color: '#4c1d95', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 2 }}>Invite Code</Text>
+                                        <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#5b21b6', fontFamily: 'monospace' }}>{family.secret_key}</Text>
+                                    </View>
+                                    {copied ? <Check size={20} color="#16a34a" /> : <Copy size={20} color="#7c3aed" />}
+                                </TouchableOpacity>
+
+                                {/* Currency Edit for Parents */}
+                                {profile?.role === 'parent' && (
+                                    <TouchableOpacity
+                                        style={styles.currencyBox}
+                                        onPress={() => setIsCurrencyModalOpen(true)}
+                                    >
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                            <Text style={{ fontSize: 10, color: '#4c1d95', fontWeight: 'bold', textTransform: 'uppercase' }}>Currency</Text>
+                                            <Edit2 size={10} color="#5b21b6" />
+                                        </View>
+                                        <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#5b21b6' }}>{family.currency || 'INR'}</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
                         </GradientCard>
                     </View>
+                )}
+
+                {/* Currency Selection Modal */}
+                {isCurrencyModalOpen && (
+                    <Modal
+                        visible={isCurrencyModalOpen}
+                        transparent={true}
+                        animationType="fade"
+                        onRequestClose={() => setIsCurrencyModalOpen(false)}
+                    >
+                        <View style={styles.modalOverlay}>
+                            <View style={styles.modalContent}>
+                                <View style={styles.modalHeader}>
+                                    <Text style={styles.modalTitle}>Select Currency</Text>
+                                    <TouchableOpacity onPress={() => setIsCurrencyModalOpen(false)}>
+                                        <X size={24} color="#64748b" />
+                                    </TouchableOpacity>
+                                </View>
+                                <Text style={styles.modalSubtext}>
+                                    Changing currency requires all debts to be settled first.
+                                </Text>
+
+                                <View style={styles.currencyList}>
+                                    {currencies.map(c => (
+                                        <TouchableOpacity
+                                            key={c}
+                                            style={[
+                                                styles.currencyItem,
+                                                family?.currency === c && styles.currencyItemActive
+                                            ]}
+                                            onPress={() => handleUpdateCurrency(c)}
+                                            disabled={updatingCurrency}
+                                        >
+                                            <Text style={[
+                                                styles.currencyText,
+                                                family?.currency === c && styles.currencyTextActive
+                                            ]}>{c}</Text>
+                                            {family?.currency === c && <Check size={16} color="#4f46e5" />}
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+                        </View>
+                    </Modal>
                 )}
 
                 {/* Kids List (Parent Only) */}
@@ -263,7 +383,7 @@ export default function ProfileScreen() {
 
                 <View style={{ height: 40 }} />
             </ScrollView>
-        </SafeAreaView>
+        </SafeAreaView >
     );
 }
 
@@ -298,6 +418,25 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center'
     },
+    currencyBox: {
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        borderRadius: 12,
+        padding: 12,
+        justifyContent: 'center',
+        minWidth: 80
+    },
+
+    // Modal
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+    modalContent: { backgroundColor: 'white', borderRadius: 20, padding: 24, width: '100%', maxWidth: 320 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+    modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#0f172a' },
+    modalSubtext: { fontSize: 13, color: '#64748b', marginBottom: 24, lineHeight: 18 },
+    currencyList: { gap: 8 },
+    currencyItem: { padding: 16, borderRadius: 12, backgroundColor: '#f8fafc', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: 'transparent' },
+    currencyItemActive: { backgroundColor: '#eef2ff', borderColor: '#818cf8' },
+    currencyText: { fontSize: 16, fontWeight: '600', color: '#334155' },
+    currencyTextActive: { color: '#4f46e5', fontWeight: 'bold' },
 
     signOutBtn: { marginTop: 8 },
     statsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
