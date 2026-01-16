@@ -46,35 +46,38 @@ export default function RootNavigator() {
                 ) : !profile?.family_id ? (
                     <Stack.Screen name="JoinFamily" component={JoinFamilyScreen} />
                 ) : (
-                    <Stack.Screen name="Main" component={MainTabNavigator} />
+                    <>
+                        <Stack.Screen name="Main" component={MainTabNavigator} />
+                        <Stack.Screen name="Profile" component={require('../screens/Profile').default} />
+
+                        {/* Expenses */}
+                        <Stack.Screen name="AddExpense" component={require('../screens/Expenses/AddExpense').default} />
+                        <Stack.Screen name="SettleUp" component={require('../screens/Expenses/SettleUp').default} />
+                        <Stack.Screen name="ExpenseReports" component={require('../screens/Expenses/ExpenseReports').default} />
+
+                        {/* Games Batch 1 */}
+                        <Stack.Screen name="Game_ColorChaos" component={require('../screens/games/ColorChaos').default} />
+                        <Stack.Screen name="Game_MemoryMatch" component={require('../screens/games/MemoryMatch').default} />
+                        <Stack.Screen name="Game_NumberMemory" component={require('../screens/games/NumberMemory').default} />
+
+                        {/* Games Batch 2 */}
+                        <Stack.Screen name="Game_PatternMemory" component={require('../screens/games/PatternMemory').default} />
+                        <Stack.Screen name="Game_QuickMath" component={require('../screens/games/QuickMath').default} />
+                        <Stack.Screen name="Game_ReflexChallenge" component={require('../screens/games/ReflexChallenge').default} />
+
+                        {/* Games Batch 3 */}
+                        <Stack.Screen name="Game_SchulteTable" component={require('../screens/games/SchulteTable').default} />
+                        <Stack.Screen name="Game_SimonSays" component={require('../screens/games/SimonSays').default} />
+                        <Stack.Screen name="Game_TowerOfHanoi" component={require('../screens/games/TowerOfHanoi').default} />
+
+                        {/* Games Batch 4 */}
+                        <Stack.Screen name="Game_WaterJugs" component={require('../screens/games/WaterJugs').default} />
+                        <Stack.Screen name="Game_WhackAMole" component={require('../screens/games/WhackAMole').default} />
+                        <Stack.Screen name="Game_WordScramble" component={require('../screens/games/WordScramble').default} />
+                    </>
                 )}
 
-                <Stack.Screen name="Profile" component={require('../screens/Profile').default} />
 
-                {/* Expenses */}
-                <Stack.Screen name="AddExpense" component={require('../screens/Expenses/AddExpense').default} />
-                <Stack.Screen name="SettleUp" component={require('../screens/Expenses/SettleUp').default} />
-                <Stack.Screen name="ExpenseReports" component={require('../screens/Expenses/ExpenseReports').default} />
-
-                {/* Games Batch 1 */}
-                <Stack.Screen name="Game_ColorChaos" component={require('../screens/games/ColorChaos').default} />
-                <Stack.Screen name="Game_MemoryMatch" component={require('../screens/games/MemoryMatch').default} />
-                <Stack.Screen name="Game_NumberMemory" component={require('../screens/games/NumberMemory').default} />
-
-                {/* Games Batch 2 */}
-                <Stack.Screen name="Game_PatternMemory" component={require('../screens/games/PatternMemory').default} />
-                <Stack.Screen name="Game_QuickMath" component={require('../screens/games/QuickMath').default} />
-                <Stack.Screen name="Game_ReflexChallenge" component={require('../screens/games/ReflexChallenge').default} />
-
-                {/* Games Batch 3 */}
-                <Stack.Screen name="Game_SchulteTable" component={require('../screens/games/SchulteTable').default} />
-                <Stack.Screen name="Game_SimonSays" component={require('../screens/games/SimonSays').default} />
-                <Stack.Screen name="Game_TowerOfHanoi" component={require('../screens/games/TowerOfHanoi').default} />
-
-                {/* Games Batch 4 */}
-                <Stack.Screen name="Game_WaterJugs" component={require('../screens/games/WaterJugs').default} />
-                <Stack.Screen name="Game_WhackAMole" component={require('../screens/games/WhackAMole').default} />
-                <Stack.Screen name="Game_WordScramble" component={require('../screens/games/WordScramble').default} />
 
             </Stack.Navigator>
         </NavigationContainer>
