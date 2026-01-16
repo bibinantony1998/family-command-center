@@ -51,6 +51,11 @@ export default function RootNavigator() {
 
                 <Stack.Screen name="Profile" component={require('../screens/Profile').default} />
 
+                {/* Expenses */}
+                <Stack.Screen name="AddExpense" component={require('../screens/Expenses/AddExpense').default} />
+                <Stack.Screen name="SettleUp" component={require('../screens/Expenses/SettleUp').default} />
+                <Stack.Screen name="ExpenseReports" component={require('../screens/Expenses/ExpenseReports').default} />
+
                 {/* Games Batch 1 */}
                 <Stack.Screen name="Game_ColorChaos" component={require('../screens/games/ColorChaos').default} />
                 <Stack.Screen name="Game_MemoryMatch" component={require('../screens/games/MemoryMatch').default} />

@@ -1,3 +1,4 @@
+import { useFocusEffect } from '@react-navigation/native';
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,10 +15,12 @@ export default function ExpensesScreen({ navigation }: any) {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    // Initial Fetch
-    useEffect(() => {
-        fetchData();
-    }, []);
+    // Data Fetching with Focus Effect
+    useFocusEffect(
+        React.useCallback(() => {
+            fetchData();
+        }, [])
+    );
 
     const fetchData = async () => {
         try {
@@ -81,7 +84,7 @@ export default function ExpensesScreen({ navigation }: any) {
                 <Text style={styles.headerTitle}>Expenses</Text>
                 <TouchableOpacity
                     style={styles.iconButton}
-                    onPress={() => Alert.alert('Reports', 'Coming soon!')}
+                    onPress={() => navigation.navigate('ExpenseReports')}
                 >
                     <FileBarChart size={24} color="#4f46e5" />
                 </TouchableOpacity>
@@ -102,6 +105,28 @@ export default function ExpensesScreen({ navigation }: any) {
                     <Text style={styles.balanceSubtext}>
                         {myBalance >= 0 ? 'you are owed' : 'you owe'}
                     </Text>
+                </View>
+
+                {/* Actions */}
+                <View style={styles.actionRow}>
+                    <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => navigation.navigate('AddExpense')}
+                    >
+                        <View style={[styles.actionIcon, styles.bgIndigo]}>
+                            <Plus size={24} color="#4f46e5" />
+                        </View>
+                        <Text style={styles.actionText}>Add Expense</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => navigation.navigate('SettleUp')}
+                    >
+                        <View style={[styles.actionIcon, styles.bgOrange]}>
+                            <ArrowLeftRight size={24} color="#ea580c" />
+                        </View>
+                        <Text style={styles.actionText}>Settle Up</Text>
+                    </TouchableOpacity>
                 </View>
 
                 {/* Balances List */}
@@ -128,27 +153,7 @@ export default function ExpensesScreen({ navigation }: any) {
                     </View>
                 )}
 
-                {/* Actions */}
-                <View style={styles.actionRow}>
-                    <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => Alert.alert('Add Expense', 'Feature coming in next update')}
-                    >
-                        <View style={[styles.actionIcon, styles.bgIndigo]}>
-                            <Plus size={24} color="#4f46e5" />
-                        </View>
-                        <Text style={styles.actionText}>Add Expense</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => Alert.alert('Settle Up', 'Feature coming in next update')}
-                    >
-                        <View style={[styles.actionIcon, styles.bgOrange]}>
-                            <ArrowLeftRight size={24} color="#ea580c" />
-                        </View>
-                        <Text style={styles.actionText}>Settle Up</Text>
-                    </TouchableOpacity>
-                </View>
+
 
                 {/* Activity */}
                 <View style={styles.section}>

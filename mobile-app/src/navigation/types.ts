@@ -18,6 +18,10 @@ export type RootStackParamList = {
     Game_WaterJugs: undefined;
     Game_WhackAMole: undefined;
     Game_WordScramble: undefined;
+    // Expenses
+    AddExpense: { id?: string } | undefined;
+    SettleUp: undefined;
+    ExpenseReports: undefined;
 };
 
 export type AuthStackParamList = {

@@ -11,19 +11,22 @@ interface PointsChartProps {
 }
 
 export const PointsChart: React.FC<PointsChartProps> = ({ data = [0, 0, 0, 0, 0] }) => {
+    // Safe guard for empty data
+    const chartData = data.length > 0 ? data : [0, 0, 0, 0, 0];
+
     // Normalize data
-    const max = Math.max(...data, 100);
+    const max = Math.max(...chartData, 100); // Default max 100 to avoid flat lines at bottom
     const min = 0;
-    const range = max - min;
+    const range = max - min || 100; // Avoid division by zero if all values are same
 
     // Create points
-    const points = data.map((value, index) => {
-        const x = (index / (data.length - 1)) * CHART_WIDTH;
+    const points = chartData.map((value, index) => {
+        const x = (index / (Math.max(1, chartData.length - 1))) * CHART_WIDTH;
         const y = CHART_HEIGHT - ((value - min) / range) * CHART_HEIGHT;
         return `${x},${y}`;
     });
 
-    const pathD = `M ${points.join(' L ')}`;
+    const pathD = points.length > 0 ? `M ${points.join(' L ')}` : '';
 
     return (
         <View style={styles.container}>
@@ -42,8 +45,8 @@ export const PointsChart: React.FC<PointsChartProps> = ({ data = [0, 0, 0, 0, 0]
                 />
 
                 {/* Data Points */}
-                {data.map((value, index) => {
-                    const x = (index / (data.length - 1)) * CHART_WIDTH;
+                {chartData.map((value, index) => {
+                    const x = (index / (Math.max(1, chartData.length - 1))) * CHART_WIDTH;
                     const y = CHART_HEIGHT - ((value - min) / range) * CHART_HEIGHT;
                     return (
                         <Circle
@@ -58,15 +61,15 @@ export const PointsChart: React.FC<PointsChartProps> = ({ data = [0, 0, 0, 0, 0]
                     );
                 })}
 
-                {data.length > 0 && <SvgText
+                {chartData.length > 0 && <SvgText
                     x={CHART_WIDTH}
-                    y={CHART_HEIGHT - ((data[data.length - 1] - min) / range) * CHART_HEIGHT - 10}
+                    y={CHART_HEIGHT - ((chartData[chartData.length - 1] - min) / range) * CHART_HEIGHT - 10}
                     fill="#6366f1"
                     fontSize="12"
                     fontWeight="bold"
                     textAnchor="end"
                 >
-                    {data[data.length - 1]} pts
+                    {chartData[chartData.length - 1]}
                 </SvgText>}
             </Svg>
         </View>

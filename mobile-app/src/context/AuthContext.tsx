@@ -11,10 +11,17 @@ type Profile = {
     balance: number;
 };
 
+type Family = {
+    id: string;
+    name: string;
+    currency: string;
+};
+
 type AuthContextType = {
     session: Session | null;
     user: User | null;
     profile: Profile | null;
+    family: Family | null;
     loading: boolean;
     refreshProfile: () => Promise<void>;
     signOut: () => Promise<void>;
@@ -24,6 +31,7 @@ const AuthContext = createContext<AuthContextType>({
     session: null,
     user: null,
     profile: null,
+    family: null,
     loading: true,
     refreshProfile: async () => { },
     signOut: async () => { },
@@ -33,6 +41,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
     const [profile, setProfile] = useState<Profile | null>(null);
+    const [family, setFamily] = useState<Family | null>(null);
     const [loading, setLoading] = useState(true);
 
     const fetchProfile = async (userId: string) => {
@@ -47,10 +56,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 console.error('Error fetching profile:', error);
             } else {
                 setProfile(data);
+                if (data.family_id) {
+                    fetchFamily(data.family_id);
+                }
             }
         } catch (e) {
             console.error('Exception fetching profile:', e);
         }
+    };
+
+    const fetchFamily = async (familyId: string) => {
+        const { data } = await supabase.from('families').select('*').eq('id', familyId).single();
+        if (data) setFamily(data);
     };
 
     const refreshProfile = async () => {
@@ -84,6 +101,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 fetchProfile(session.user.id);
             } else {
                 setProfile(null);
+                setFamily(null);
             }
             setLoading(false);
         });
@@ -94,12 +112,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const signOut = async () => {
         await supabase.auth.signOut();
         setProfile(null);
+        setFamily(null);
         setUser(null);
         setSession(null);
     };
 
     return (
-        <AuthContext.Provider value={{ session, user, profile, loading, refreshProfile, signOut }}>
+        <AuthContext.Provider value={{ session, user, profile, family, loading, refreshProfile, signOut }}>
             {children}
         </AuthContext.Provider>
     );
