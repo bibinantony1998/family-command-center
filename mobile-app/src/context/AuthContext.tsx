@@ -2,6 +2,26 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
+// Helper to timeout a promise
+const withTimeout = <T,>(promise: Promise<T>, ms: number = 7000, fallbackValue?: T): Promise<T> => {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            if (fallbackValue !== undefined) resolve(fallbackValue);
+            else reject(new Error('Operation timed out'));
+        }, ms);
+
+        promise
+            .then((val) => {
+                clearTimeout(timer);
+                resolve(val);
+            })
+            .catch((err) => {
+                clearTimeout(timer);
+                reject(err);
+            });
+    });
+};
+
 type Profile = {
     id: string;
     display_name: string;
@@ -85,8 +105,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     const fetchFamily = async (familyId: string) => {
-        const { data } = await supabase.from('families').select('*').eq('id', familyId).single();
-        if (data) setFamily(data);
+        try {
+            const { data, error } = await supabase.from('families').select('*').eq('id', familyId).single();
+            if (error) {
+                console.error('Error fetching family:', error);
+                return;
+            }
+            if (data) setFamily(data);
+        } catch (e) {
+            console.error('Exception fetching family:', e);
+        }
     };
 
     const fetchMyFamilies = async (userId: string) => {
@@ -109,8 +137,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     const refreshProfile = async () => {
-        if (user) {
-            await fetchProfile(user.id);
+        try {
+            if (user) {
+                await fetchProfile(user.id);
+            }
+        } catch (e) {
+            console.error('Error refreshing profile:', e);
         }
     };
 
@@ -130,48 +162,87 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     useEffect(() => {
+        let mounted = true;
+
+        // Safety timeout to prevent infinite loading
+        // Safety timeout to prevent infinite loading
+        // Safety timeout to prevent infinite loading
+        const safetyTimeout = setTimeout(() => {
+            if (mounted && loading) {
+                setLoading(false);
+            }
+        }, 10000); // 10 seconds max loading time
+
         const initSession = async () => {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
-                setSession(session);
-                setUser(session?.user ?? null);
-                if (session?.user) {
-                    await fetchProfile(session.user.id);
+                // Wrap session fetching in timeout
+                const { data, error } = await withTimeout(
+                    supabase.auth.getSession(),
+                    5000
+                );
+
+                if (error) throw error;
+                const session = data?.session;
+
+                if (mounted) {
+                    setSession(session);
+                    setUser(session?.user ?? null);
+                    if (session?.user) {
+                        // Attempt to fetch profile with timeout, ignore errors
+                        await withTimeout(fetchProfile(session.user.id), 5000).catch(() => { });
+                    }
                 }
             } catch (e) {
-                console.error('Error getting session:', e);
+                // Ignore session errors
             } finally {
-                setLoading(false);
+                if (mounted) setLoading(false);
             }
         };
 
         initSession();
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-            setSession(session);
-            setUser(session?.user ?? null);
+            try {
+                if (!mounted) return;
 
-            if (session?.user) {
-                setLoading(true); // Ensure loading is true while fetching profile
-                await fetchProfile(session.user.id);
-            } else {
-                setProfile(null);
-                setFamily(null);
-                setMyFamilies([]);
+                setSession(session);
+                setUser(session?.user ?? null);
+
+                if (session?.user) {
+                    setLoading(true); // Ensure loading is true while fetching profile
+                    await withTimeout(fetchProfile(session.user.id), 5000).catch(() => { });
+                } else {
+                    setProfile(null);
+                    setFamily(null);
+                    setMyFamilies([]);
+                }
+            } catch (e) {
+                // Ignore auth state errors
+            } finally {
+                if (mounted) setLoading(false);
             }
-            setLoading(false);
         });
 
-        return () => subscription.unsubscribe();
+        return () => {
+            mounted = false;
+            clearTimeout(safetyTimeout);
+            subscription.unsubscribe();
+        };
     }, []);
 
     const signOut = async () => {
-        await supabase.auth.signOut();
-        setProfile(null);
-        setFamily(null);
-        setMyFamilies([]);
-        setUser(null);
-        setSession(null);
+        try {
+            const { error } = await supabase.auth.signOut();
+            if (error) console.error('Error signing out:', error);
+        } catch (e) {
+            console.error('Exception signing out:', e);
+        } finally {
+            setProfile(null);
+            setFamily(null);
+            setMyFamilies([]);
+            setUser(null);
+            setSession(null);
+        }
     };
 
     const leaveFamily = async (targetFamilyId: string) => {
