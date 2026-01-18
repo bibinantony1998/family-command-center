@@ -148,8 +148,8 @@ export default function NotesScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f8fafc' },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20, backgroundColor: 'white' },
-    headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#1e293b' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+    headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#1e293b' },
     addButton: { backgroundColor: '#f59e0b', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
     list: { padding: 16, paddingBottom: 100 },
     note: { flex: 1, padding: 16, borderRadius: 16, minHeight: 120, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },

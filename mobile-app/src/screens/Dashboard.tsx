@@ -8,6 +8,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { MainTabParamList } from '../navigation/types';
 import { Check, X, ShoppingCart, StickyNote, Star, Gift, CheckSquare, Bell } from 'lucide-react-native';
 import { Chore, Grocery, Note, Redemption } from '../types/schema';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type DashboardNavigationProp = BottomTabNavigationProp<MainTabParamList, 'Dashboard'>;
 
@@ -266,10 +267,7 @@ export default function DashboardScreen() {
     );
 
     return (
-        <ScrollView
-            contentContainerStyle={styles.container}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        >
+        <View style={styles.containerSafe}>
             <View style={styles.header}>
                 <View>
                     <Text style={styles.greeting}>Hi, {profile?.display_name}! 👋</Text>
@@ -282,16 +280,22 @@ export default function DashboardScreen() {
                 </TouchableOpacity>
             </View>
 
-            {profile?.role === 'parent' ? <ParentDashboard /> : <ChildDashboard />}
-        </ScrollView>
+            <ScrollView
+                contentContainerStyle={styles.container}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            >
+                {profile?.role === 'parent' ? <ParentDashboard /> : <ChildDashboard />}
+            </ScrollView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { padding: 16, backgroundColor: '#f8fafc', minHeight: '100%' },
-    header: { marginBottom: 24, marginTop: 40, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    greeting: { fontSize: 28, fontWeight: 'bold', color: '#1e293b' },
-    role: { fontSize: 14, color: '#64748b' },
+    containerSafe: { flex: 1, backgroundColor: '#f8fafc' },
+    container: { padding: 16, paddingBottom: 100 },
+    header: { paddingHorizontal: 24, paddingVertical: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+    greeting: { fontSize: 24, fontWeight: 'bold', color: '#1e293b' },
+    role: { fontSize: 13, color: '#64748b' },
     profileBtn: { padding: 4 },
     avatarSmall: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#e0e7ff', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#fff' },
     avatarTextSmall: { color: '#6366f1', fontWeight: 'bold', fontSize: 16 },

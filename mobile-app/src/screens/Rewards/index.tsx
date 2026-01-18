@@ -158,9 +158,10 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f8fafc' },
     header: {
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20, backgroundColor: 'white'
+        paddingHorizontal: 24, paddingVertical: 16, backgroundColor: 'white',
+        borderBottomWidth: 1, borderBottomColor: '#f1f5f9'
     },
-    headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#1e293b' },
+    headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#1e293b' },
     balance: { fontSize: 16, color: '#6366f1', fontWeight: '600' },
     addButton: { backgroundColor: '#8b5cf6', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
     list: { padding: 16 },

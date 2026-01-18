@@ -6,6 +6,7 @@ import { Chore } from '../../types/schema';
 import { Check, CheckCircle, Plus, Trash2, User } from 'lucide-react-native';
 import { AddChoreModal } from '../../components/chores/AddChoreModal';
 import { Card } from '../../components/ui/Card';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ChoresScreen() {
     const { profile, user, family } = useAuth();
@@ -124,6 +125,7 @@ export default function ChoresScreen() {
         <View style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Chores</Text>
+                {/* ... */}
                 {profile?.role === 'parent' && (
                     <TouchableOpacity onPress={() => setIsModalOpen(true)} style={styles.addButton}>
                         <Plus color="white" />
@@ -151,14 +153,15 @@ export default function ChoresScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f8fafc' },
+    container: { flex: 1, backgroundColor: '#fff' },
     header: {
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20, backgroundColor: 'white'
+        paddingHorizontal: 24, paddingVertical: 16, backgroundColor: 'white',
+        borderBottomWidth: 1, borderBottomColor: '#f1f5f9'
     },
-    headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#1e293b' },
+    headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#1e293b' },
     addButton: { backgroundColor: '#6366f1', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-    list: { padding: 16 },
+    list: { padding: 16, backgroundColor: '#f8fafc', minHeight: '100%' },
     itemWrapper: { marginBottom: 12 },
     item: {
         flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: 'white',

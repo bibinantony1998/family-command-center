@@ -35,7 +35,7 @@ export default function MenuScreen() {
     ];
 
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Menu</Text>
             </View>
@@ -65,14 +65,14 @@ export default function MenuScreen() {
 
                 <Text style={styles.version}>Version 1.8.0</Text>
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f8fafc' },
-    header: { padding: 20, paddingBottom: 10 },
-    headerTitle: { fontSize: 32, fontWeight: '800', color: '#1e293b' },
+    header: { paddingHorizontal: 24, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', backgroundColor: 'white' },
+    headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#1e293b' },
     content: { padding: 20 },
     sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#64748b', marginBottom: 16 },
     menuItem: {

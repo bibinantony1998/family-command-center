@@ -131,7 +131,7 @@ export default function ExpensesScreen({ navigation }: any) {
     const currency = family?.currency || 'INR';
 
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Expenses</Text>
                 <TouchableOpacity
@@ -305,7 +305,7 @@ export default function ExpensesScreen({ navigation }: any) {
                     </View>
                 </View>
             </Modal>
-        </SafeAreaView>
+        </View>
     );
 }
 

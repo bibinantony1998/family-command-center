@@ -60,8 +60,8 @@ export default function GamesHubScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f8fafc' },
-    header: { paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20, backgroundColor: 'white' },
-    headerTitle: { fontSize: 32, fontWeight: 'black', color: '#1e293b' },
+    header: { paddingHorizontal: 24, paddingVertical: 16, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+    headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#1e293b' },
     headerSubtitle: { fontSize: 16, color: '#64748b' },
     list: { padding: 16 },
     item: {
