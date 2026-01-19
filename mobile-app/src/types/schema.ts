@@ -14,6 +14,7 @@ export interface Chore {
     is_completed: boolean;
     assigned_to?: string;
     family_id: string;
+    assignee?: { display_name: string; avatar_url?: string };
 }
 
 export interface Reward {
@@ -45,4 +46,15 @@ export interface Grocery {
     item_name: string;
     is_purchased: boolean;
     quantity?: string;
+}
+
+export interface ChatMessage {
+    id: string;
+    family_id: string;
+    sender_id: string;
+    recipient_id: string | null;
+    content: string;
+    is_read: boolean;
+    read_by: string[];
+    created_at: string;
 }

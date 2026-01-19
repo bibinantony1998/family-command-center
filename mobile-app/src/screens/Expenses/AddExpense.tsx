@@ -38,15 +38,21 @@ export default function AddExpenseScreen({ navigation, route }: any) {
             const { data: familyIdData } = await supabase.rpc('get_my_family_id');
             const family_id = familyIdData;
 
-            const { data: members } = await supabase.from('profiles')
-                .select('*')
-                .eq('family_id', family_id)
-                .eq('role', 'parent');
+            const { data: members } = await supabase
+                .from('family_members')
+                .select('profile:profiles(*)')
+                .eq('family_id', family_id);
 
             if (members) {
-                setFamilyMembers(members);
+                // Filter for parents only (if that's the requirement, or all members?)
+                // Previous code filtered for role='parent'. Sticking to that.
+                const parents = members
+                    .map((m: any) => m.profile)
+                    .filter((p: any) => p && p.role === 'parent');
+
+                setFamilyMembers(parents);
                 // Default select all
-                setSelectedMembers(members.map(m => m.id));
+                setSelectedMembers(parents.map(m => m.id));
             }
         } catch (e) {
             console.error(e);

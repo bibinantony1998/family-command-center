@@ -22,6 +22,7 @@ export type RootStackParamList = {
     AddExpense: { id?: string } | undefined;
     SettleUp: undefined;
     ExpenseReports: undefined;
+    Chat: { recipientId: string | null; name: string };
 };
 
 export type AuthStackParamList = {
@@ -33,6 +34,7 @@ export type AuthStackParamList = {
 export type MainTabParamList = {
     Dashboard: undefined;
     Chores: undefined;
+    ChatList: undefined;
     Rewards: undefined;
     Groceries: undefined;
     Notes: undefined;

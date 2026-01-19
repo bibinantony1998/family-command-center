@@ -32,14 +32,23 @@ export default function ExpensesScreen({ navigation }: any) {
             if (familyIdError) throw familyIdError;
             const family_id = familyIdData;
 
-            const { data: profiles, error: profilesError } = await supabase.from('profiles')
-                .select('id, display_name, avatar_url')
+            // Fetch profiles for the current family via family_members
+            const { data: familyMembers, error: membersError } = await supabase
+                .from('family_members')
+                .select('profile:profiles(id, display_name, avatar_url)')
                 .eq('family_id', family_id);
 
-            if (profilesError) throw profilesError;
+            if (membersError) throw membersError;
 
             const memberMap: Record<string, { display_name: string, avatar_url: string }> = {};
-            profiles?.forEach((p: any) => memberMap[p.id] = { display_name: p.display_name, avatar_url: p.avatar_url });
+            familyMembers?.forEach((m: any) => {
+                if (m.profile) {
+                    memberMap[m.profile.id] = {
+                        display_name: m.profile.display_name,
+                        avatar_url: m.profile.avatar_url
+                    };
+                }
+            });
             setMembers(memberMap);
 
             // Fetch expenses, splits, and settlements

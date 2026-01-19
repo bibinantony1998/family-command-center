@@ -18,10 +18,10 @@ export default function ChoresScreen() {
         if (!family?.id) return;
         const { data } = await supabase
             .from('chores')
-            .select('*')
+            .select('*, assignee:profiles!assigned_to(display_name, avatar_url)')
             .eq('family_id', family.id)
             .order('created_at', { ascending: false });
-        if (data) setChores(data);
+        if (data) setChores(data as any);
     };
 
     useEffect(() => {
@@ -29,20 +29,9 @@ export default function ChoresScreen() {
 
         const channel = supabase.channel(`chores:${family?.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'chores', filter: `family_id=eq.${family?.id}` },
-                (payload) => {
-                    if (payload.eventType === 'INSERT') {
-                        const newChore = payload.new as Chore;
-                        setChores(prev => {
-                            if (prev.some(c => c.id === newChore.id)) return prev;
-                            return [newChore, ...prev];
-                        });
-                    }
-                    if (payload.eventType === 'UPDATE') {
-                        setChores(prev => prev.map(c => c.id === payload.new.id ? payload.new as Chore : c));
-                    }
-                    if (payload.eventType === 'DELETE') {
-                        setChores(prev => prev.filter(c => c.id !== payload.old.id));
-                    }
+                () => {
+                    // Refetch to get joined profile data
+                    fetchChores();
                 })
             .subscribe();
 
@@ -64,6 +53,9 @@ export default function ChoresScreen() {
         if (error) {
             Alert.alert('Error', 'Failed to update chore');
             fetchChores(); // Revert
+        } else {
+            // If we claimed it, we need to re-fetch to see our name (unless we optimistic update name too, but refetch is safer)
+            if (shouldClaim) fetchChores();
         }
     };
 
@@ -88,10 +80,8 @@ export default function ChoresScreen() {
         }]).select().single();
 
         if (error) throw error;
-
-        if (data) {
-            setChores(prev => [data as Chore, ...prev]);
-        }
+        // fetchChores handles the update via realtime usually, or we can refetch manually
+        // Since we refetch on realtime, this is covered.
     };
 
     const renderItem = ({ item }: { item: Chore }) => (
@@ -112,7 +102,9 @@ export default function ChoresScreen() {
                         {item.assigned_to && (
                             <View style={styles.assignedBadge}>
                                 <User size={10} color="#6366f1" />
-                                <Text style={styles.assignedText}>Assigned</Text>
+                                <Text style={styles.assignedText}>
+                                    {item.assignee?.display_name || 'Assigned'}
+                                </Text>
                             </View>
                         )}
                     </View>

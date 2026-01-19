@@ -1,6 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Users, CheckSquare, Gift, Gamepad2, Menu, ShoppingCart, ArrowRightLeft } from 'lucide-react-native';
+import { Users, CheckSquare, Gift, Gamepad2, Menu, ShoppingCart, ArrowRightLeft, MessageSquare } from 'lucide-react-native';
 import { MainTabParamList } from './types';
 
 // Screens
@@ -12,6 +12,7 @@ import MenuScreen from '../screens/Menu';
 import GroceriesScreen from '../screens/Groceries';
 import NotesScreen from '../screens/Notes';
 import ExpensesScreen from '../screens/Expenses';
+import ChatListScreen from '../screens/Chat/ChatListScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -64,6 +65,15 @@ export default function MainTabNavigator() {
                     component={ChoresScreen}
                     options={{
                         tabBarIcon: ({ color, size }) => <CheckSquare size={size} color={color} />,
+                    }}
+                />
+
+                <Tab.Screen
+                    name="ChatList"
+                    component={ChatListScreen}
+                    options={{
+                        tabBarIcon: ({ color, size }) => <MessageSquare size={size} color={color} />,
+                        tabBarLabel: 'Chat'
                     }}
                 />
 
