@@ -33,25 +33,31 @@ export default function AddExpense() {
     }, []);
 
     const fetchFamilyMembers = async () => {
-        const { data } = await supabase.from('profiles')
-            .select('*')
-            .eq('family_id', (await supabase.rpc('get_my_family_id')).data);
+        let familyId = family?.id;
+        if (!familyId) {
+            const { data } = await supabase.rpc('get_my_family_id');
+            familyId = data;
+        }
 
-        if (!data) {
-            // Fallback logic
-            const { data: userData } = await supabase.from('profiles').select('family_id').eq('id', user?.id).single();
-            if (userData) {
-                const { data: members } = await supabase.from('profiles').select('*').eq('family_id', userData.family_id);
-                if (members) {
-                    const parents = members.filter(m => m.role === 'parent');
-                    setFamilyMembers(parents);
-                    setSelectedMembers(parents.map(m => m.id));
-                }
-            }
-        } else {
-            const parents = data.filter((m: any) => m.role === 'parent');
+        if (!familyId) return;
+
+        const { data: members } = await supabase
+            .from('family_members')
+            .select('role, profile:profiles(*)')
+            .eq('family_id', familyId);
+
+        if (members) {
+            // 1. Flatten
+            const allProfiles = members.map((m: any) => ({ ...m.profile, role: m.role })).filter(p => p && p.id);
+
+            // 2. Filter parents only for "Paid By" and "Splits" (usually expenses are between parents, but if kids are needed we can adjust. Defaulting to PARENTS based on existing logic).
+            const parents = allProfiles.filter(p => p.role === 'parent');
             setFamilyMembers(parents);
-            setSelectedMembers(parents.map(m => m.id));
+
+            // 3. Default selection
+            if (selectedMembers.length === 0) {
+                setSelectedMembers(parents.map(p => p.id));
+            }
         }
     };
 
@@ -316,7 +322,7 @@ export default function AddExpense() {
                 {/* Split Section */}
                 <div className="border-t pt-4">
                     <label className="block text-sm font-medium text-gray-700 mb-3">Split With</label>
-                    <div className="flex flex-wrap gap-2 mb-4">
+                    <div className="flex flex-wrap gap-2 mb-4 max-h-32 overflow-y-auto px-1 custom-scrollbar">
                         {familyMembers.map(m => (
                             <button
                                 type="button"

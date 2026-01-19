@@ -13,12 +13,7 @@ export default function Expenses() {
     const navigate = useNavigate();
     const { user, family, profile } = useAuth(); // Added profile
 
-    // Restriction for kids
-    if (profile?.role === 'child') {
-        navigate('/');
-        return null;
-    }
-
+    // Hooks must be called unconditionally
     const [balances, setBalances] = useState<Balance[]>([]);
     const [members, setMembers] = useState<Record<string, { display_name: string, avatar_url: string }>>({});
     const [recentActivity, setRecentActivity] = useState<any[]>([]);
@@ -26,6 +21,13 @@ export default function Expenses() {
     const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null);
+
+    // Restriction for kids - Redirect Effect
+    useEffect(() => {
+        if (profile?.role === 'child') {
+            navigate('/');
+        }
+    }, [profile, navigate]);
 
     const promptDelete = (expenseId: string) => {
         setExpenseToDelete(expenseId);
@@ -83,20 +85,41 @@ export default function Expenses() {
             if (familyIdError) throw familyIdError;
             const family_id = familyIdData;
 
-            const { data: profiles, error: profilesError } = await supabase.from('profiles')
-                .select('id, display_name, avatar_url')
+            // Fetch profiles for the current family via family_members
+            const { data: familyMembers, error: membersError } = await supabase
+                .from('family_members')
+                .select('profile:profiles(id, display_name, avatar_url)')
                 .eq('family_id', family_id);
 
-            if (profilesError) throw profilesError;
+            if (membersError) throw membersError;
 
             const memberMap: Record<string, { display_name: string, avatar_url: string }> = {};
-            profiles?.forEach((p: any) => memberMap[p.id] = { display_name: p.display_name, avatar_url: p.avatar_url });
+            familyMembers?.forEach((m: any) => {
+                if (m.profile) {
+                    memberMap[m.profile.id] = {
+                        display_name: m.profile.display_name,
+                        avatar_url: m.profile.avatar_url
+                    };
+                }
+            });
             setMembers(memberMap);
 
-            // Fetch expenses, splits, and settlements
-            const { data: expensesData, error: expensesError } = await supabase.from('expenses').select('*').order('date', { ascending: false });
+            // Fetch expenses, splits, and settlements (Scoped to THIS family)
+            const { data: expensesData, error: expensesError } = await supabase
+                .from('expenses')
+                .select('*')
+                .eq('family_id', family_id)
+                .order('date', { ascending: false });
+
+            // Note: Splits don't always have family_id, but they are linked to expenses. 
+            // Ideally we filter splits by the expense IDs we just fetched, but for now select all is acceptable as we cross-reference in JS.
             const { data: splitsData, error: splitsError } = await supabase.from('expense_splits').select('*');
-            const { data: settlementsData, error: settlementsError } = await supabase.from('settlements').select('*').order('created_at', { ascending: false });
+
+            const { data: settlementsData, error: settlementsError } = await supabase
+                .from('settlements')
+                .select('*')
+                .eq('family_id', family_id)
+                .order('created_at', { ascending: false });
 
             if (expensesError) throw expensesError;
             if (splitsError) throw splitsError;
@@ -127,6 +150,7 @@ export default function Expenses() {
     const currency = family?.currency || 'INR'; // Default
 
     if (loading) return <div className="p-8 text-center">Loading...</div>;
+    if (profile?.role === 'child') return null;
 
     return (
         <div className="space-y-6 pb-20">

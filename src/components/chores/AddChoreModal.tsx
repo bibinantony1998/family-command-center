@@ -14,7 +14,7 @@ interface AddChoreModalProps {
 }
 
 export function AddChoreModal({ isOpen, onClose, onAdd }: AddChoreModalProps) {
-    const { profile } = useAuth();
+    const { family } = useAuth();
     const [title, setTitle] = useState('');
     const [points, setPoints] = useState(10);
     const [assignedTo, setAssignedTo] = useState<string>('');
@@ -22,19 +22,25 @@ export function AddChoreModal({ isOpen, onClose, onAdd }: AddChoreModalProps) {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (!isOpen || !profile?.family_id) return;
+        if (!isOpen || !family?.id) return;
 
         const fetchMembers = async () => {
             const { data } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('family_id', profile.family_id);
+                .from('family_members')
+                .select('profile:profiles(*)') // Join to get profile details
+                .eq('family_id', family.id);
 
-            if (data) setMembers(data);
+            if (data) {
+                // Map the nested profile object to the top level
+                const validMembers = data
+                    .map((item: any) => item.profile)
+                    .filter((p: any) => p !== null);
+                setMembers(validMembers);
+            }
         };
 
         fetchMembers();
-    }, [isOpen, profile?.family_id]);
+    }, [isOpen, family?.id]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -105,7 +111,7 @@ export function AddChoreModal({ isOpen, onClose, onAdd }: AddChoreModalProps) {
 
                                 <div>
                                     <label className="block text-sm font-medium text-slate-600 mb-1">Assign To</label>
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
                                         <button
                                             type="button"
                                             onClick={() => setAssignedTo('')}

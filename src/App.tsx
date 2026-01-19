@@ -4,6 +4,7 @@ import { AppLayout } from './components/layout/AppLayout';
 import Auth from './pages/Auth';
 import JoinFamily from './pages/JoinFamily';
 import Dashboard from './pages/Dashboard';
+import Chat from './pages/Chat';
 
 import Groceries from './pages/Groceries';
 import Notes from './pages/Notes';
@@ -87,6 +88,7 @@ function AuthenticatedAppContent() {
         <Route path="games/whack-a-mole" element={<WhackAMole />} />
         <Route path="rewards" element={<Rewards />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="chat" element={<Chat />} />
         <Route path="expenses" element={<Expenses />} />
         <Route path="expenses/add" element={<AddExpense />} />
         <Route path="expenses/settle" element={<SettleUp />} />

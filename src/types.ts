@@ -72,3 +72,15 @@ export interface Redemption {
     rewards?: Reward;
     profiles?: Profile;
 }
+
+export interface ChatMessage {
+    id: string;
+    family_id: string;
+    sender_id: string;
+    recipient_id: string | null; // null = group
+    content: string;
+    is_read: boolean;
+    created_at: string;
+    // Join
+    sender?: Profile;
+}

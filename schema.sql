@@ -178,6 +178,18 @@ begin
 end;
 $$;
 
+-- Helper: Get ALL My Family IDs (Secure/Non-Recursive)
+create or replace function get_my_family_ids()
+returns setof uuid
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select family_id from family_members where profile_id = auth.uid();
+$$;
+
+
 -- PROFILES Policies
 create policy "Users can view own profile" on profiles
   for select using (auth.uid() = id);
@@ -193,7 +205,7 @@ create policy "Users can view family members" on profiles
     exists (
       select 1 from family_members fm 
       where fm.profile_id = profiles.id 
-      and fm.family_id = get_my_family_id()
+      and fm.family_id in (select get_my_family_ids())
     )
   );
 
@@ -203,7 +215,7 @@ create policy "Users can view own memberships" on family_members
 
 create policy "Family members can view other members" on family_members
   for select using (
-    family_id = get_my_family_id()
+    family_id in (select get_my_family_ids())
   );
 
 create policy "Users can join families" on family_members
@@ -803,3 +815,79 @@ create trigger on_game_score_added
 after insert on game_scores
 for each row
 execute procedure handle_add_points();
+
+
+-- 11. CHAT MESSAGES
+-- Table for storing chat messages (Direct & Group)
+-- Table for storing chat messages (Direct & Group)
+create table chat_messages (
+  id uuid primary key default uuid_generate_v4(),
+  family_id uuid references families(id) not null,
+  sender_id uuid references profiles(id) not null,
+  recipient_id uuid references profiles(id), -- Null means Group Chat (all parents)
+  content text not null,
+  is_read boolean default false, -- DEPRECATED: Use read_by array
+  read_by uuid[] default '{}', -- NEW: Array of user IDs who have read the message
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- CHAT Policies
+alter table chat_messages enable row level security;
+
+-- Select: Parents can see messages they sent, received, or group messages in their family.
+create policy "Parents view chat messages" on chat_messages
+  for select using (
+    exists (
+      select 1 from family_members fm
+      where fm.family_id = chat_messages.family_id
+      and fm.profile_id = auth.uid()
+      and fm.role = 'parent'
+    )
+    and (
+       sender_id = auth.uid() 
+       or recipient_id = auth.uid() 
+       or recipient_id is null
+    )
+  );
+
+-- Insert: Only parents can send messages.
+create policy "Parents send chat messages" on chat_messages
+  for insert with check (
+    family_id = get_my_family_id() 
+    and get_my_role() = 'parent'
+    and sender_id = auth.uid()
+  );
+
+-- Update: Parents can update messages (e.g. mark as read).
+-- ALLOW any parent in the family to update (specifically for marking read)
+  );
+
+-- RPC: Mark Messages Read (Atomic Array Update)
+create or replace function mark_messages_read(p_family_id uuid, p_recipient_id uuid default null)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  -- Update messages to include me in 'read_by'
+  -- 1. Must be in right family
+  -- 2. Must NOT be already read by me
+  -- 3. Must NOT be sent by me
+  
+  update chat_messages
+  set read_by = array_append(read_by, auth.uid())
+  where family_id = p_family_id
+  and not (read_by @> array[auth.uid()])
+  and sender_id != auth.uid()
+  and (
+      -- If p_recipient_id provided (DM view):
+         -- If I am viewing a DM with User B (p_recipient_id = User B ID)
+         -- I want to mark messages Sent BY User B (sender_id = User B)
+      (p_recipient_id is not null and sender_id = p_recipient_id)
+      OR
+      -- If p_recipient_id is NULL (Group Chat View):
+         -- Mark all GROUP messages (recipient_id is null)
+      (p_recipient_id is null and recipient_id is null)
+  );
+end;
+$$;
