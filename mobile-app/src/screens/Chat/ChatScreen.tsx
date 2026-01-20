@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Keyboard } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { ChatMessage } from '../../types/schema';
@@ -23,7 +23,25 @@ export default function ChatScreen() {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
     const [sending, setSending] = useState(false);
+    const [isKeyboardVisible, setKeyboardVisible] = useState(false);
     const flatListRef = useRef<FlatList>(null);
+
+    useEffect(() => {
+        const keyboardDidShowListener = Keyboard.addListener(
+            Platform.OS === 'android' ? 'keyboardDidShow' : 'keyboardWillShow',
+            () => setKeyboardVisible(true)
+        );
+        const keyboardDidHideListener = Keyboard.addListener(
+            Platform.OS === 'android' ? 'keyboardDidHide' : 'keyboardWillHide',
+            () => setKeyboardVisible(false)
+        );
+
+        return () => {
+            keyboardDidShowListener.remove();
+            keyboardDidHideListener.remove();
+        };
+    }, []);
+
 
     useEffect(() => {
         if (!family?.id) return;
@@ -135,35 +153,44 @@ export default function ChatScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <ArrowLeft color="#0f172a" size={24} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>{name}</Text>
-                <View style={{ width: 24 }} />
-            </View>
-
-            <FlatList
-                ref={flatListRef}
-                data={messages}
-                keyExtractor={item => item.id}
-                renderItem={({ item }) => (
-                    <MessageBubble
-                        message={item}
-                        isOwn={item.sender_id === user?.id}
-                        showSenderName={!recipientId && item.sender_id !== user?.id}
-                    />
-                )}
-                contentContainerStyle={styles.listContent}
-                onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-                onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
-            />
-
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+            <SafeAreaView
+                style={styles.container}
+                edges={
+                    Platform.OS === 'ios'
+                        ? ['top', 'bottom']
+                        : (isKeyboardVisible ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom'])
+                }
             >
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                        <ArrowLeft color="#0f172a" size={24} />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>{name}</Text>
+                    <View style={{ width: 24 }} />
+                </View>
+
+                <FlatList
+                    ref={flatListRef}
+                    data={messages}
+                    keyExtractor={item => item.id}
+                    renderItem={({ item }) => (
+                        <MessageBubble
+                            message={item}
+                            isOwn={item.sender_id === user?.id}
+                            showSenderName={!recipientId && item.sender_id !== user?.id}
+                        />
+                    )}
+                    contentContainerStyle={styles.listContent}
+                    onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+                    onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+                    style={{ flex: 1 }}
+                />
+
                 <View style={styles.inputContainer}>
                     <TextInput
                         style={styles.input}
@@ -181,8 +208,8 @@ export default function ChatScreen() {
                         {sending ? <ActivityIndicator color="white" size="small" /> : <Send color="white" size={20} />}
                     </TouchableOpacity>
                 </View>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
+            </SafeAreaView>
+        </KeyboardAvoidingView>
     );
 }
 
