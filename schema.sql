@@ -48,6 +48,7 @@ create table profiles (
   family_id uuid references families(id), -- kept for legacy/migration
   current_family_id uuid references families(id), -- NEW: Active family context
   balance integer default 0,
+  fcm_token text, -- NEW: Firebase Cloud Messaging Token
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 

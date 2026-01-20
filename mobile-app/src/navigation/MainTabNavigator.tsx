@@ -17,6 +17,7 @@ import ChatListScreen from '../screens/Chat/ChatListScreen';
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 import { useAuth } from '../context/AuthContext';
+import { useChat } from '../context/ChatContext';
 
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { View } from 'react-native';
@@ -24,6 +25,7 @@ import { View } from 'react-native';
 export default function MainTabNavigator() {
     const insets = useSafeAreaInsets();
     const { profile } = useAuth();
+    const { totalUnreadCount } = useChat();
     const isChild = profile?.role === 'child';
 
     return (
@@ -73,7 +75,9 @@ export default function MainTabNavigator() {
                     component={ChatListScreen}
                     options={{
                         tabBarIcon: ({ color, size }) => <MessageSquare size={size} color={color} />,
-                        tabBarLabel: 'Chat'
+                        tabBarLabel: 'Chat',
+                        tabBarBadge: totalUnreadCount > 0 ? totalUnreadCount : undefined,
+                        tabBarBadgeStyle: { backgroundColor: '#ef4444', fontSize: 10, height: 16, minWidth: 16 }
                     }}
                 />
 

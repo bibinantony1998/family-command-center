@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, RefreshControl } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
+import { useChat } from '../../context/ChatContext';
 import { supabase } from '../../lib/supabase';
 import { Users, User } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,31 +17,18 @@ export default function ChatListScreen() {
     const navigation = useNavigation<ChatListNavigationProp>();
 
     const [parents, setParents] = useState<any[]>([]);
-    const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+    const { unreadCounts, refreshUnreadCounts } = useChat();
     const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
         if (family?.id && user?.id) {
-            fetchData();
-
-            // Realtime subscription for unread counts
-            const channel = supabase
-                .channel('chat_list_unread_mobile')
-                .on('postgres_changes',
-                    { event: '*', schema: 'public', table: 'chat_messages', filter: `family_id=eq.${family.id}` },
-                    () => {
-                        fetchUnreadCounts();
-                    }
-                )
-                .subscribe();
-
-            return () => { supabase.removeChannel(channel); };
+            fetchParents();
         }
     }, [family?.id, user?.id]);
 
     const fetchData = async () => {
         setRefreshing(true);
-        await Promise.all([fetchParents(), fetchUnreadCounts()]);
+        await Promise.all([fetchParents(), refreshUnreadCounts()]);
         setRefreshing(false);
     };
 
@@ -64,43 +52,7 @@ export default function ChatListScreen() {
         }
     };
 
-    const fetchUnreadCounts = async () => {
-        if (!family?.id || !user?.id) return;
-        try {
-            const { data } = await supabase
-                .from('chat_messages')
-                .select('sender_id, recipient_id, read_by')
-                .eq('family_id', family.id);
 
-            if (data) {
-                const counts: Record<string, number> = {};
-                let groupCount = 0;
-
-                data.forEach((msg: any) => {
-                    const readBy = msg.read_by || [];
-                    const isUnread = !readBy.includes(user.id);
-
-                    if (isUnread) {
-                        // Only count if NOT sent by me
-                        if (msg.sender_id === user.id) return;
-
-                        if (msg.recipient_id === user.id) {
-                            // DM to me
-                            counts[msg.sender_id] = (counts[msg.sender_id] || 0) + 1;
-                        } else if (msg.recipient_id === null) {
-                            // Group
-                            groupCount++;
-                        }
-                    }
-                });
-
-                counts['GROUP'] = groupCount;
-                setUnreadCounts(counts);
-            }
-        } catch (e) {
-            console.error(e);
-        }
-    };
 
     const navigateToChat = (recipientId: string | null, name: string) => {
         navigation.navigate('Chat', { recipientId, name });

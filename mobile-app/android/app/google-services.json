@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "251814565228",
+    "project_id": "family-command-center-b7c5d",
+    "storage_bucket": "family-command-center-b7c5d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:251814565228:android:c476e3cc06b76d08c0cf49",
+        "android_client_info": {
+          "package_name": "com.familycommandcenter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDkrPFo-4c6-QAxh-z8Lp7UK5VQbUpIBa0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
