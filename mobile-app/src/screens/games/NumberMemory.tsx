@@ -14,10 +14,12 @@ export default function NumberMemoryScreen() {
     const [number, setNumber] = useState('');
     const [input, setInput] = useState('');
     const [timeLeft, setTimeLeft] = useState(0); // Time to memorize
+    const [loading, setLoading] = useState(true);
 
     const init = async () => {
         const lvl = await getHighestLevel('number-memory');
         setLevel(lvl);
+        setLoading(false);
     };
 
     useEffect(() => { init(); }, []);
@@ -59,7 +61,7 @@ export default function NumberMemoryScreen() {
                 <View style={styles.centerContent}>
                     <Text style={styles.title}>Number Memory</Text>
                     <Text style={styles.subtitle}>Memorize the number before it disappears!</Text>
-                    <Button title={`Start Level ${level}`} onPress={startGame} style={{ marginTop: 32, width: '100%' }} />
+                    <Button title={loading ? 'Loading...' : `Start Level ${level}`} onPress={startGame} disabled={loading} style={{ marginTop: 32, width: '100%' }} />
                 </View>
             )}
 

@@ -22,8 +22,14 @@ export default function SimonSaysScreen() {
     const [userStep, setUserStep] = useState(0);
     const [activeIdx, setActiveIdx] = useState<number | null>(null);
     const [message, setMessage] = useState('');
+    const [loading, setLoading] = useState(true);
 
-    useEffect(() => { getHighestLevel('simon-says').then(setLevel); }, []);
+    useEffect(() => {
+        getHighestLevel('simon-says').then((l) => {
+            setLevel(l);
+            setLoading(false);
+        });
+    }, []);
 
     const playSequence = async (seq: number[]) => {
         setGameState('demo');
@@ -80,7 +86,7 @@ export default function SimonSaysScreen() {
                     <Zap size={64} color="#6366f1" />
                     <Text style={styles.title}>Simon Says</Text>
                     <Text style={styles.subtitle}>Memorize the sequence!</Text>
-                    <Button title={`Start Level ${level}`} onPress={startGame} style={styles.startBtn} />
+                    <Button title={loading ? 'Loading...' : `Start Level ${level}`} onPress={startGame} disabled={loading} style={styles.startBtn} />
                 </View>
             )}
 

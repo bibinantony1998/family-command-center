@@ -27,11 +27,13 @@ export default function ColorChaosScreen() {
     const [ink, setInk] = useState(COLORS[1]);
     const [options, setOptions] = useState<string[]>([]);
     const [questionsAnswered, setQuestionsAnswered] = useState(0);
+    const [loading, setLoading] = useState(true);
 
     const init = async () => {
         const lvl = await getHighestLevel('color-chaos');
         setStartedLevel(lvl);
         setLevel(lvl);
+        setLoading(false);
     };
 
     useEffect(() => { init(); }, []);
@@ -112,7 +114,7 @@ export default function ColorChaosScreen() {
                 <View style={styles.centerContent}>
                     <Text style={styles.title}>Color Chaos</Text>
                     <Text style={styles.subtitle}>Tap the COLOR of the text, not the word!</Text>
-                    <Button title={`Start Level ${level}`} onPress={startGame} style={{ marginTop: 32, width: '100%' }} />
+                    <Button title={loading ? 'Loading...' : `Start Level ${level}`} onPress={startGame} disabled={loading} style={{ marginTop: 32, width: '100%' }} />
                 </View>
             )}
 

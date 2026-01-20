@@ -14,9 +14,13 @@ export default function PatternMemoryScreen() {
     const [gridSize, setGridSize] = useState(3);
     const [pattern, setPattern] = useState<number[]>([]);
     const [selectedCells, setSelectedCells] = useState<number[]>([]);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        getHighestLevel('pattern-memory').then(setLevel);
+        getHighestLevel('pattern-memory').then((l) => {
+            setLevel(l);
+            setLoading(false);
+        });
     }, []);
 
     const startGame = () => {
@@ -70,7 +74,7 @@ export default function PatternMemoryScreen() {
                 <View style={styles.centerContent}>
                     <Text style={styles.title}>Pattern Memory</Text>
                     <Text style={styles.subtitle}>Memorize the pattern!</Text>
-                    <Button title={`Start Level ${level}`} onPress={startGame} style={styles.startBtn} />
+                    <Button title={loading ? 'Loading...' : `Start Level ${level}`} onPress={startGame} disabled={loading} style={styles.startBtn} />
                 </View>
             )}
 

@@ -37,8 +37,14 @@ export default function WaterJugsScreen() {
     const [jugs, setJugs] = useState<{ id: number, capacity: number, current: number }[]>([]);
     const [selectedJug, setSelectedJug] = useState<number | null>(null);
     const [moves, setMoves] = useState(0);
+    const [loading, setLoading] = useState(true);
 
-    useEffect(() => { getHighestLevel('water-jugs').then(setLevel); }, []);
+    useEffect(() => {
+        getHighestLevel('water-jugs').then((l) => {
+            setLevel(l);
+            setLoading(false);
+        });
+    }, []);
 
     const startLevel = (lvl: number) => {
         const config = LEVELS_CONFIG[lvl - 1] || LEVELS_CONFIG[0];
@@ -146,7 +152,7 @@ export default function WaterJugsScreen() {
                         <Text style={styles.ruleText}>• Pour: Transfer water between jugs.</Text>
                     </View>
 
-                    <Button title={`Start Level ${level}`} onPress={startGame} style={styles.startBtn} />
+                    <Button title={loading ? 'Loading...' : `Start Level ${level}`} onPress={startGame} disabled={loading} style={styles.startBtn} />
                 </View>
             )}
 

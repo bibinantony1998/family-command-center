@@ -28,17 +28,18 @@ export const useGameScore = () => {
     }, [profile]);
 
     const getHighestLevel = useCallback(async (gameId: string) => {
-        if (!profile) return 1;
+        if (!profile || !family) return 1;
         const { data } = await supabase
             .from('game_scores')
             .select('level')
             .eq('game_id', gameId)
             .eq('profile_id', profile.id)
+            .eq('family_id', family.id)
             .order('level', { ascending: false })
             .limit(1);
 
         return (data?.[0]?.level || 0) + 1;
-    }, [profile]);
+    }, [profile, family]);
 
     return { saveScore, getHighestLevel };
 };

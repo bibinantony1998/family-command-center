@@ -16,8 +16,14 @@ export default function TowerOfHanoiScreen() {
     const [rods, setRods] = useState<number[][]>([[], [], []]);
     const [selectedRod, setSelectedRod] = useState<number | null>(null);
     const [moves, setMoves] = useState(0);
+    const [loading, setLoading] = useState(true);
 
-    useEffect(() => { getHighestLevel('tower-hanoi').then(setLevel); }, []);
+    useEffect(() => {
+        getHighestLevel('tower-hanoi').then((l) => {
+            setLevel(l);
+            setLoading(false);
+        });
+    }, []);
 
     const numDisks = level + 2;
 
@@ -75,7 +81,7 @@ export default function TowerOfHanoiScreen() {
                     <Layers size={64} color="#f97316" />
                     <Text style={styles.title}>Tower of Hanoi</Text>
                     <Text style={styles.subtitle}>Move stack to the last rod.</Text>
-                    <Button title={`Start Level ${level}`} onPress={startGame} style={styles.startBtn} />
+                    <Button title={loading ? 'Loading...' : `Start Level ${level}`} onPress={startGame} disabled={loading} style={styles.startBtn} />
                 </View>
             )}
 

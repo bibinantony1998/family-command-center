@@ -1,13 +1,14 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, TouchableOpacityProps } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, TouchableOpacityProps, StyleProp, TextStyle } from 'react-native';
 
 interface ButtonProps extends TouchableOpacityProps {
     title: string;
     isLoading?: boolean;
     variant?: 'primary' | 'secondary' | 'outline' | 'destructive' | 'ghost' | 'default';
+    textStyle?: StyleProp<TextStyle>;
 }
 
-export const Button = ({ title, isLoading, variant = 'primary', style, ...props }: ButtonProps) => {
+export const Button = ({ title, isLoading, variant = 'primary', style, textStyle, ...props }: ButtonProps) => {
     const getBackgroundColor = () => {
         switch (variant) {
             case 'primary':
@@ -46,7 +47,7 @@ export const Button = ({ title, isLoading, variant = 'primary', style, ...props 
             {isLoading ? (
                 <ActivityIndicator color={getTextColor()} />
             ) : (
-                <Text style={[styles.text, { color: getTextColor() }]}>{title}</Text>
+                <Text style={[styles.text, { color: getTextColor() }, textStyle]}>{title}</Text>
             )}
         </TouchableOpacity>
     );

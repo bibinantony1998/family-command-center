@@ -29,8 +29,14 @@ export default function QuickMathScreen() {
     const [input, setInput] = useState('');
     const [count, setCount] = useState(0);
     const [timeLeft, setTimeLeft] = useState(60);
+    const [loading, setLoading] = useState(true);
 
-    useEffect(() => { getHighestLevel('quick-math').then(setLevel); }, []);
+    useEffect(() => {
+        getHighestLevel('quick-math').then((l) => {
+            setLevel(l);
+            setLoading(false);
+        });
+    }, []);
 
     useEffect(() => {
         let timer: NodeJS.Timeout;
@@ -103,7 +109,7 @@ export default function QuickMathScreen() {
                 <View style={styles.centerContent}>
                     <Text style={styles.title}>Quick Math</Text>
                     <Text style={styles.subtitle}>Solve 5 problems quickly!</Text>
-                    <Button title={`Start Level ${level}`} onPress={startGame} style={styles.startBtn} />
+                    <Button title={loading ? 'Loading...' : `Start Level ${level}`} onPress={startGame} disabled={loading} style={styles.startBtn} />
                 </View>
             )}
 

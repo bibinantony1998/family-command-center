@@ -40,10 +40,12 @@ export default function MemoryMatchScreen() {
     const [cards, setCards] = useState<Card[]>([]);
     const [flippedIndices, setFlippedIndices] = useState<number[]>([]);
     const [timeLeft, setTimeLeft] = useState(60);
+    const [loading, setLoading] = useState(true);
 
     const init = async () => {
         const lvl = await getHighestLevel('memory-match');
         setLevel(lvl);
+        setLoading(false);
     };
 
     useEffect(() => { init(); }, []);
@@ -129,7 +131,7 @@ export default function MemoryMatchScreen() {
                 <View style={styles.centerContent}>
                     <Text style={styles.title}>Memory Match</Text>
                     <Text style={styles.subtitle}>Find all the pairs before time runs out!</Text>
-                    <Button title={`Start Level ${level}`} onPress={startGame} style={{ marginTop: 32, width: '100%' }} />
+                    <Button title={loading ? 'Loading...' : `Start Level ${level}`} onPress={startGame} disabled={loading} style={{ marginTop: 32, width: '100%' }} />
                 </View>
             )}
 

@@ -28,8 +28,14 @@ export default function WordScrambleScreen() {
     const [letters, setLetters] = useState<{ char: string, id: number }[]>([]);
     const [input, setInput] = useState<{ char: string, id: number }[]>([]);
     const [wordsSolved, setWordsSolved] = useState(0);
+    const [loading, setLoading] = useState(true);
 
-    useEffect(() => { getHighestLevel('word-scramble').then(setLevel); }, []);
+    useEffect(() => {
+        getHighestLevel('word-scramble').then((l) => {
+            setLevel(l);
+            setLoading(false);
+        });
+    }, []);
 
     const nextWord = () => {
         const pool = WORD_LIST[Math.min(level - 1, 9)];
@@ -92,7 +98,7 @@ export default function WordScrambleScreen() {
                     <Type size={64} color="#8b5cf6" />
                     <Text style={styles.title}>Word Scramble</Text>
                     <Text style={styles.subtitle}>Unscramble 3 words to win!</Text>
-                    <Button title={`Start Level ${level}`} onPress={startGame} style={styles.startBtn} />
+                    <Button title={loading ? 'Loading...' : `Start Level ${level}`} onPress={startGame} disabled={loading} style={styles.startBtn} />
                 </View>
             )}
 

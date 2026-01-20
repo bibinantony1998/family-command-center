@@ -15,8 +15,14 @@ export default function SchulteTableScreen() {
     const [gridSize, setGridSize] = useState(3);
     const [nextNumber, setNextNumber] = useState(1);
     const [elapsed, setElapsed] = useState(0);
+    const [loading, setLoading] = useState(true);
 
-    useEffect(() => { getHighestLevel('schulte-table').then(setLevel); }, []);
+    useEffect(() => {
+        getHighestLevel('schulte-table').then((l) => {
+            setLevel(l);
+            setLoading(false);
+        });
+    }, []);
 
     useEffect(() => {
         let timer: NodeJS.Timeout;
@@ -65,7 +71,7 @@ export default function SchulteTableScreen() {
                     <LayoutGrid size={64} color="#d97706" />
                     <Text style={styles.title}>Schulte Table</Text>
                     <Text style={styles.subtitle}>Find numbers in order (1, 2, 3...)</Text>
-                    <Button title={`Start Level ${level}`} onPress={startGame} style={styles.startBtn} />
+                    <Button title={loading ? 'Loading...' : `Start Level ${level}`} onPress={startGame} disabled={loading} style={styles.startBtn} />
                 </View>
             )}
 

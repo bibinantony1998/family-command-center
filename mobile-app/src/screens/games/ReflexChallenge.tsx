@@ -13,11 +13,17 @@ export default function ReflexChallengeScreen() {
     const [level, setLevel] = useState(1);
     const [message, setMessage] = useState('');
     const [reactionTime, setReactionTime] = useState(0);
+    const [loading, setLoading] = useState(true);
 
     const startTimeRef = useRef<number>(0);
     const timeoutRef = useRef<NodeJS.Timeout>();
 
-    useEffect(() => { getHighestLevel('reflex-challenge').then(setLevel); }, []);
+    useEffect(() => {
+        getHighestLevel('reflex-challenge').then((l) => {
+            setLevel(l);
+            setLoading(false);
+        });
+    }, []);
 
     const targetTime = 500 - (level * 30);
 
@@ -63,7 +69,7 @@ export default function ReflexChallengeScreen() {
                                 <Zap size={64} color="#eab308" />
                                 <Text style={styles.title}>Reflex Challenge</Text>
                                 <Text style={styles.subtitle}>Tap when screen turns GREEN!</Text>
-                                <Button title={`Start Level ${level}`} onPress={startRound} style={styles.startBtn} />
+                                <Button title={loading ? 'Loading...' : `Start Level ${level}`} onPress={startRound} disabled={loading} style={styles.startBtn} />
                             </>
                         )}
                         {gameState === 'result' && (

@@ -14,8 +14,14 @@ export default function WhackAMoleScreen() {
     const [score, setScore] = useState(0);
     const [timeLeft, setTimeLeft] = useState(30);
     const [moleIdx, setMoleIdx] = useState<number | null>(null);
+    const [loading, setLoading] = useState(true);
 
-    useEffect(() => { getHighestLevel('whack-a-mole').then(setLevel); }, []);
+    useEffect(() => {
+        getHighestLevel('whack-a-mole').then((l) => {
+            setLevel(l);
+            setLoading(false);
+        });
+    }, []);
 
     // Game loop
     useEffect(() => {
@@ -79,7 +85,7 @@ export default function WhackAMoleScreen() {
                     <Hammer size={64} color="#f59e0b" />
                     <Text style={styles.title}>Whack-a-Mole</Text>
                     <Text style={styles.subtitle}>Hit {10 + (level * 2)} moles!</Text>
-                    <Button title={`Start Level ${level}`} onPress={startGame} style={styles.startBtn} />
+                    <Button title={loading ? 'Loading...' : `Start Level ${level}`} onPress={startGame} disabled={loading} style={styles.startBtn} />
                 </View>
             )}
 
