@@ -5,27 +5,26 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { StackNavigationProp } from '@react-navigation/stack';
 
 export default function JoinFamilyScreen() {
     const { user, refreshProfile, signOut, myFamilies } = useAuth();
-    const navigation = useNavigation<NativeStackNavigationProp<any>>();
+    const navigation = useNavigation<StackNavigationProp<any>>();
     const [mode, setMode] = useState<'join' | 'create'>('join');
     const [familyName, setFamilyName] = useState('');
     const [secretKey, setSecretKey] = useState('');
     const [loading, setLoading] = useState(false);
 
     const handleSuccess = () => {
+        // Check if we had families BEFORE the new one was added (using stale closure state)
         if (myFamilies && myFamilies.length > 0) {
-            navigation.replace('Profile'); // Or navigate back if pushed
+            // Already had families, so we are in the Main stack. Go back to Profile.
+            navigation.navigate('Profile');
         } else {
-            // Assuming user is in Auth stack or needs to go to Root
-            // If we are in the Auth stack, replacing with 'Root' might be needed if that is the main stack name
-            // For now, let's assume 'Root' or standard navigation structure.
-            // If this screen is inside 'Auth' stack, and we want to go to main app, we usually reset nav or replace.
-            // Let's try navigating to 'Root' which is common, or if not defined, it might need adjustment.
-            // Given the context, let's assume standard behavior is needed.
-            navigation.replace('Root');
+            // This was the first family.
+            // Explicitly navigate to Main because JoinFamily exists in both navigators
+            // so React Navigation might not auto-switch us away.
+            navigation.replace('Main');
         }
     };
 
@@ -144,7 +143,7 @@ export default function JoinFamilyScreen() {
                                 <Button
                                     title="Join Family"
                                     onPress={handleJoin}
-                                    loading={loading}
+                                    isLoading={loading}
                                 />
                             </>
                         ) : (
@@ -158,7 +157,7 @@ export default function JoinFamilyScreen() {
                                 <Button
                                     title="Create Family"
                                     onPress={handleCreate}
-                                    loading={loading}
+                                    isLoading={loading}
                                 />
                             </>
                         )}
