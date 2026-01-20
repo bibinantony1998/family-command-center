@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     subtitle: { fontSize: 16, color: '#64748b', textAlign: 'center' },
     memorizeLabel: { color: '#94a3b8', fontWeight: 'bold', letterSpacing: 2, marginBottom: 20 },
     numberDisplay: { fontSize: 64, fontWeight: 'black', color: '#1e293b' },
-    input: { fontSize: 40, fontWeight: 'bold', textAlign: 'center', borderBottomWidth: 2, borderBottomColor: '#cbd5e1', width: '80%', padding: 10, letterSpacing: 4 },
+    input: { fontSize: 40, fontWeight: 'bold', textAlign: 'center', borderBottomWidth: 2, borderBottomColor: '#cbd5e1', width: '80%', padding: 10, letterSpacing: 4, color: '#000000' },
     resultTitle: { fontSize: 28, fontWeight: 'bold', color: '#1e293b', marginTop: 16 },
     points: { fontSize: 36, fontWeight: 'bold', color: '#6366f1', marginTop: 8 },
     emoji: { fontSize: 64 }
