@@ -23,25 +23,7 @@ export default function ChatScreen() {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
     const [sending, setSending] = useState(false);
-    const [isKeyboardVisible, setKeyboardVisible] = useState(false);
     const flatListRef = useRef<FlatList>(null);
-
-    useEffect(() => {
-        const keyboardDidShowListener = Keyboard.addListener(
-            Platform.OS === 'android' ? 'keyboardDidShow' : 'keyboardWillShow',
-            () => setKeyboardVisible(true)
-        );
-        const keyboardDidHideListener = Keyboard.addListener(
-            Platform.OS === 'android' ? 'keyboardDidHide' : 'keyboardWillHide',
-            () => setKeyboardVisible(false)
-        );
-
-        return () => {
-            keyboardDidShowListener.remove();
-            keyboardDidHideListener.remove();
-        };
-    }, []);
-
 
     useEffect(() => {
         if (!family?.id) return;
@@ -153,18 +135,9 @@ export default function ChatScreen() {
     };
 
     return (
-        <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-        >
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <SafeAreaView
                 style={styles.container}
-                edges={
-                    Platform.OS === 'ios'
-                        ? ['top', 'bottom']
-                        : (isKeyboardVisible ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom'])
-                }
             >
                 <View style={styles.header}>
                     <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -209,7 +182,7 @@ export default function ChatScreen() {
                     </TouchableOpacity>
                 </View>
             </SafeAreaView>
-        </KeyboardAvoidingView>
+        </KeyboardAvoidingView >
     );
 }
 

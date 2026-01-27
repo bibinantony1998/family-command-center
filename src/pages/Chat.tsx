@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import type { Profile } from '../types';
 import { ChatList } from '../components/chat/ChatList';
 import { ChatWindow } from '../components/chat/ChatWindow';
-import { ArrowLeft, MessageSquare, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, MessageSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Chat() {
@@ -14,9 +14,6 @@ export default function Chat() {
     // activeChatId: null = List View, 'GROUP' = Group, 'uuid' = DM
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [otherParents, setOtherParents] = useState<Profile[]>([]);
-
-    // Debug state
-    const [debugInfo, setDebugInfo] = useState<string>('Initializing...');
 
     useEffect(() => {
         if (profile?.role !== 'parent') {
@@ -28,7 +25,6 @@ export default function Chat() {
         const familyId = family?.id || profile?.family_id;
 
         if (!profile || !familyId) {
-            setDebugInfo("No profile or family ID loaded.");
             return;
         }
 
@@ -42,13 +38,11 @@ export default function Chat() {
 
             if (error) {
                 console.error("Error fetching family members:", error);
-                setDebugInfo(`Error: ${error.message}`);
                 return;
             }
 
             if (!members || members.length === 0) {
                 setOtherParents([]);
-                setDebugInfo('No members found in this family.');
                 return;
             }
 
@@ -66,9 +60,6 @@ export default function Chat() {
 
             setOtherParents(parentMembers);
 
-            // 3. SET RICH DEBUG INFO
-            const summary = allProfiles.map(p => `${p.display_name} [${p.role}]`).join('\n');
-            setDebugInfo(`Using Family ID: ${familyId}\nFetched ${allProfiles.length} members.\nFiltered to ${parentMembers.length} parents.\n\nRaw Member List:\n${summary}`);
         };
 
         fetchFamilyMembers();
@@ -132,24 +123,6 @@ export default function Chat() {
                 familyId={familyId}
                 currentUserId={profile.id}
             />
-
-            {/* DEBUG PANEL - Hide if working */}
-            {otherParents.length === 0 && (
-                <div className="mt-8 p-4 bg-slate-100 rounded-xl border border-slate-200 text-xs font-mono text-slate-700 overflow-x-auto">
-                    <div className="flex items-center gap-2 mb-2 font-bold text-amber-600">
-                        <AlertTriangle size={14} /> DEBUG CONSOLE (No Parents Found)
-                    </div>
-                    <div className="space-y-1">
-                        <p><strong>My ID:</strong> {profile.id}</p>
-                        <p><strong>My Role:</strong> {profile.role}</p>
-                        <p><strong>Family ID (Context):</strong> {family?.id || 'Missing'}</p>
-                        <p><strong>Family ID (Profile):</strong> {profile.family_id || 'Missing'}</p>
-                        <div className="border-t border-slate-300 my-2 pt-2 whitespace-pre-wrap">
-                            {debugInfo}
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
