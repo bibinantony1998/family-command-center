@@ -135,9 +135,11 @@ export default function ChatScreen() {
     };
 
     return (
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-            <SafeAreaView
-                style={styles.container}
+        <SafeAreaView style={styles.container}>
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
             >
                 <View style={styles.header}>
                     <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -181,8 +183,8 @@ export default function ChatScreen() {
                         {sending ? <ActivityIndicator color="white" size="small" /> : <Send color="white" size={20} />}
                     </TouchableOpacity>
                 </View>
-            </SafeAreaView>
-        </KeyboardAvoidingView >
+            </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 }
 
