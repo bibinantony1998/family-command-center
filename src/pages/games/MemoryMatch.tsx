@@ -243,7 +243,7 @@ export default function MemoryMatch() {
                         </div>
                     </div>
 
-                    <div className={`grid gap-3 flex-1 place-content-center w-full`}
+                    <div className={`grid gap-3 flex-1 place-content-center w-full [perspective:1000px]`}
                         style={{
                             gridTemplateColumns: `repeat(${gridSize <= 6 ? 2 : gridSize <= 12 ? 3 : 4}, minmax(0, 1fr))`
                         }}>
@@ -251,8 +251,8 @@ export default function MemoryMatch() {
                             <motion.button
                                 key={index}
                                 onClick={() => handleCardClick(index)}
-                                className={`aspect-square rounded-xl text-3xl flex items-center justify-center shadow-sm transition-all
-                                    ${card.isFlipped || card.isMatched ? 'bg-white border-2 border-indigo-100 rotate-0' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-transparent'}
+                                className={`aspect-square rounded-xl text-4xl flex items-center justify-center shadow-sm transition-colors duration-300
+                                    ${card.isFlipped || card.isMatched ? 'bg-white border-2 border-indigo-100 text-slate-800' : 'bg-gradient-to-br from-indigo-500 to-violet-600'}
                                 `}
                                 animate={{ rotateY: card.isFlipped || card.isMatched ? 0 : 180 }}
                                 transition={{ duration: 0.3 }}
