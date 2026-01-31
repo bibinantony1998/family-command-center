@@ -13,7 +13,7 @@ export default function SplashScreen() {
                 <Text style={styles.subtitle}>Manage your household with superpowers!</Text>
             </View>
             <View style={styles.footer}>
-                <Text style={styles.version}>v1.13</Text>
+                <Text style={styles.version}>v1.14</Text>
             </View>
         </View>
     );

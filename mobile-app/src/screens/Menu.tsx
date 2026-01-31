@@ -63,7 +63,7 @@ export default function MenuScreen() {
                     <Text style={styles.signOutText}>Sign Out</Text>
                 </TouchableOpacity>
 
-                <Text style={styles.version}>Version 1.13</Text>
+                <Text style={styles.version}>Version 1.14</Text>
             </ScrollView>
         </View>
     );
