@@ -799,6 +799,80 @@ begin
 
   return NEW;
 end;
+$$ language plpgsql security definer;
+
+-- Trigger Bindings
+drop trigger if exists on_chore_completed on chores;
+create trigger on_chore_completed
+  after update on chores
+  for each row execute procedure handle_add_points();
+
+drop trigger if exists on_score_added on game_scores;
+create trigger on_score_added
+  after insert on game_scores
+  for each row execute procedure handle_add_points();
+
+-- 11. FIX SPLIT CALCULATION BUG (Atomic Upsert)
+
+-- ADD CONSTRAINT to prevent duplicate splits
+-- Note: You might need to clean up duplicates first before adding this.
+-- ALTER TABLE expense_splits ADD CONSTRAINT unique_expense_profile_split UNIQUE (expense_id, profile_id);
+
+-- ATOMIC UPSERT FUNCTION
+create or replace function upsert_expense_with_splits(
+    p_expense_id uuid,
+    p_description text,
+    p_amount numeric,
+    p_paid_by uuid,
+    p_date timestamp with time zone,
+    p_category text,
+    p_family_id uuid,
+    p_splits jsonb -- Array of objects: { profile_id, amount, percentage }
+)
+returns uuid
+language plpgsql
+security definer
+as $$
+declare
+    v_expense_id uuid;
+    split_record jsonb;
+begin
+    -- 1. Upsert Expense
+    if p_expense_id is not null then
+        update expenses 
+        set description = p_description,
+            amount = p_amount,
+            paid_by = p_paid_by,
+            date = p_date,
+            category = p_category
+        where id = p_expense_id;
+        v_expense_id := p_expense_id;
+        
+        -- Delete existing splits (to replace with new ones)
+        delete from expense_splits where expense_id = v_expense_id;
+    else
+        insert into expenses (description, amount, paid_by, date, category, family_id)
+        values (p_description, p_amount, p_paid_by, p_date, p_category, p_family_id)
+        returning id into v_expense_id;
+    end if;
+
+    -- 2. Insert New Splits
+    for split_record in select * from jsonb_array_elements(p_splits)
+    loop
+        insert into expense_splits (expense_id, profile_id, amount, percentage)
+        values (
+            v_expense_id,
+            (split_record->>'profile_id')::uuid,
+            (split_record->>'amount')::numeric,
+            (split_record->>'percentage')::numeric
+        );
+    end loop;
+
+    return v_expense_id;
+end;
+$$;
+
+end;
 $$;
 
 -- Drop old triggers if exists
