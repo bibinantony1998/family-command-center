@@ -163,9 +163,8 @@ export default function AddExpense() {
 
             const totalAmount = parseFloat(amount);
 
-            // 1. Calculate Splits
-            const splitsToInsert: any[] = [];
-            selectedMembers.forEach(memberId => {
+            // 1. Prepare Splits Array for RPC
+            const splitsArray = selectedMembers.map(memberId => {
                 let memberAmount = 0;
                 let memberPercentage: number | null = null;
 
@@ -181,53 +180,26 @@ export default function AddExpense() {
                     memberPercentage = (memberAmount / totalAmount) * 100;
                 }
 
-                splitsToInsert.push({
-                    expense_id: '', // Placeholder, will set later
+                return {
                     profile_id: memberId,
                     amount: memberAmount,
                     percentage: memberPercentage
-                });
+                };
             });
 
-            // 2. Handle Expense Record
-            if (expenseId) {
-                // UPDATE Expense
-                const { error: updateError } = await supabase.from('expenses').update({
-                    description,
-                    amount: totalAmount,
-                    paid_by: paidBy,
-                    date,
-                    category
-                }).eq('id', expenseId);
+            // 2. Call Atomic RPC
+            const { error } = await supabase.rpc('upsert_expense_with_splits', {
+                p_expense_id: expenseId || null,
+                p_description: description,
+                p_amount: totalAmount,
+                p_paid_by: paidBy,
+                p_date: date,
+                p_category: category,
+                p_family_id: userData.family_id,
+                p_splits: splitsArray
+            });
 
-                if (updateError) throw updateError;
-
-                // Update splits: Delete all and re-insert 
-                await supabase.from('expense_splits').delete().eq('expense_id', expenseId);
-
-                // Set correct ID
-                splitsToInsert.forEach(s => s.expense_id = expenseId);
-
-            } else {
-                // INSERT Expense
-                const { data: expense, error: expenseError } = await supabase.from('expenses').insert({
-                    description,
-                    amount: totalAmount,
-                    paid_by: paidBy,
-                    date,
-                    category,
-                    family_id: userData.family_id
-                }).select().single();
-
-                if (expenseError) throw expenseError;
-
-                // Assign new ID
-                splitsToInsert.forEach(s => s.expense_id = expense.id);
-            }
-
-            // 3. Insert Splits
-            const { error: splitError } = await supabase.from('expense_splits').insert(splitsToInsert);
-            if (splitError) throw splitError;
+            if (error) throw error;
 
             navigate('/expenses');
         } catch (error) {
