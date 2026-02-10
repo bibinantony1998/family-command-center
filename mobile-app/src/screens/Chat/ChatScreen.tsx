@@ -76,7 +76,7 @@ export default function ChatScreen() {
                         if (isRelevant) {
                             // Decrypt if encrypted
                             let processedMsg = newMsg;
-                            if (newMsg.is_encrypted && counterpartKeyRef.current) {
+                            if (newMsg.is_encrypted === true && counterpartKeyRef.current) {
                                 try {
                                     const decrypted = await KeyManager.decryptMessage(newMsg.content, counterpartKeyRef.current);
                                     processedMsg = { ...newMsg, content: decrypted };
@@ -132,7 +132,7 @@ export default function ChatScreen() {
         if (data) {
             // Decrypt encrypted messages
             const processed = await Promise.all((data as ChatMessage[]).map(async (msg: ChatMessage) => {
-                if (msg.is_encrypted && counterpartKeyRef.current) {
+                if (msg.is_encrypted === true && counterpartKeyRef.current) {
                     try {
                         const decrypted = await KeyManager.decryptMessage(msg.content, counterpartKeyRef.current);
                         return { ...msg, content: decrypted };
