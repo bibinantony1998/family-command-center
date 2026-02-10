@@ -94,7 +94,7 @@ export const KeyManager = {
         // Import the raw shared secret as an AES-GCM key
         const importedKey = await window.crypto.subtle.importKey(
             'raw',
-            sharedSecret,
+            sharedSecret.buffer as ArrayBuffer,
             { name: 'AES-GCM', length: 256 },
             false,
             ['encrypt']
@@ -154,7 +154,7 @@ export const KeyManager = {
             // Import Key
             const importedKey = await window.crypto.subtle.importKey(
                 'raw',
-                sharedSecret,
+                sharedSecret.buffer as ArrayBuffer,
                 { name: 'AES-GCM', length: 256 },
                 false,
                 ['decrypt']
@@ -169,7 +169,7 @@ export const KeyManager = {
             const decryptedBuffer = await window.crypto.subtle.decrypt(
                 {
                     name: 'AES-GCM',
-                    iv: ivBytes
+                    iv: ivBytes.buffer as ArrayBuffer
                 },
                 importedKey,
                 encryptedBuffer
