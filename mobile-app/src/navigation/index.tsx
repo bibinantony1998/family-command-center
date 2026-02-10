@@ -27,6 +27,17 @@ export default function RootNavigator() {
     const { session, family, loading } = useAuth();
     const [minSplashTime, setMinSplashTime] = React.useState(true);
 
+    // DEBUG: Trace RootNavigator state
+    React.useEffect(() => {
+        console.log('RootNavigator State:', {
+            loading,
+            minSplashTime,
+            hasSession: !!session,
+            hasFamily: !!family,
+            activeFamilyId: family?.id
+        });
+    }, [loading, minSplashTime, session, family]);
+
     React.useEffect(() => {
         const timer = setTimeout(() => {
             setMinSplashTime(false);
@@ -44,7 +55,7 @@ export default function RootNavigator() {
                 {!session ? (
                     <Stack.Screen name="Auth" component={AuthNavigator} />
                 ) : !family ? (
-                    <Stack.Screen name="JoinFamily" component={JoinFamilyScreen} />
+                    <Stack.Screen name="OnboardingJoinFamily" component={JoinFamilyScreen} />
                 ) : (
                     <>
                         <Stack.Screen name="Main" component={MainTabNavigator} />

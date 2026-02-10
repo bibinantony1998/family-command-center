@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { AppState } from 'react-native';
-import messaging from '@react-native-firebase/messaging';
+import messaging, { AuthorizationStatus } from '@react-native-firebase/messaging';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 
@@ -87,8 +87,8 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
                 try {
                     const authStatus = await messaging().requestPermission();
                     const enabled =
-                        authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-                        authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+                        authStatus === AuthorizationStatus.AUTHORIZED ||
+                        authStatus === AuthorizationStatus.PROVISIONAL;
 
                     if (enabled) {
                         const token = await messaging().getToken();

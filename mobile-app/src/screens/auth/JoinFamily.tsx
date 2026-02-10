@@ -15,16 +15,23 @@ export default function JoinFamilyScreen() {
     const [secretKey, setSecretKey] = useState('');
     const [loading, setLoading] = useState(false);
 
+    // Initial check: Sometiems navigation lands here before profile is fully loaded.
+    React.useEffect(() => {
+        refreshProfile();
+    }, []);
+
     const handleSuccess = () => {
-        // Check if we had families BEFORE the new one was added (using stale closure state)
+        // If we were already in the app (had a family), we want to go back to Profile/Home.
+        // If we were in the "No Family" state, the RootNavigator will automatically switch to Main
+        // once the 'family' context updates. Manual navigation to 'Main' fails because it doesn't exist yet.
+
         if (myFamilies && myFamilies.length > 0) {
-            // Already had families, so we are in the Main stack. Go back to Profile.
+            // We were likely in the authenticated stack adding *another* family
             navigation.navigate('Profile');
         } else {
-            // This was the first family.
-            // Explicitly navigate to Main because JoinFamily exists in both navigators
-            // so React Navigation might not auto-switch us away.
-            navigation.replace('Main');
+            // We were in the "Join/Create" only stack. 
+            // Do nothing. The Context update will trigger RootNavigator to switch stacks.
+            Alert.alert('Success', 'Welcome to the family! Redirecting to dashboard...');
         }
     };
 
@@ -58,14 +65,16 @@ export default function JoinFamilyScreen() {
                     console.error("Error adding member:", memberError);
                 }
 
-                // Update Profile Context
+                // Update Profile Context (Upsert to ensure it exists)
                 const { error: profileError } = await supabase
                     .from('profiles')
-                    .update({
+                    .upsert({
+                        id: user.id,
+                        display_name: user.email?.split('@')[0] || 'User', // Fallback name
                         current_family_id: family.id,
                         family_id: family.id // Keep legacy sync
                     })
-                    .eq('id', user.id);
+                    .select();
 
                 if (profileError) throw profileError;
 

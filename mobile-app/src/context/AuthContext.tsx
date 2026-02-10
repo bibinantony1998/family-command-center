@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
+import { Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
 
 // Helper to timeout a promise
@@ -74,7 +75,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [myFamilies, setMyFamilies] = useState<Family[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const fetchProfile = async (userId: string) => {
+    const fetchProfile = async (userId: string, retries = 2) => {
         try {
             const { data, error } = await supabase
                 .from('profiles')
@@ -84,6 +85,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
             if (error) {
                 console.error('Error fetching profile:', error);
+
+                // Self-healing: If profile doesn't exist, create it
+                if (error.code === 'PGRST116') {
+                    console.log('Profile missing, creating default profile...');
+                    const { error: createError } = await supabase.from('profiles').insert([{
+                        id: userId,
+                        display_name: 'User',
+                        role: 'parent'
+                    }]);
+
+                    if (!createError) {
+                        // Retry fetch ONCE more, prevent infinite loop
+                        return fetchProfile(userId, 0);
+                    } else {
+                        console.error('Failed to auto-create profile:', createError);
+                    }
+                }
             } else {
                 setProfile(data);
 
@@ -99,21 +117,47 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 // Fetch all families
                 await fetchMyFamilies(userId);
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error('Exception fetching profile:', e);
+            Alert.alert('Profile Exception', e.message || JSON.stringify(e));
+            if (retries > 0) {
+                await new Promise(resolve => setTimeout(() => resolve(null), 500));
+                return fetchProfile(userId, retries - 1);
+            }
         }
     };
 
-    const fetchFamily = async (familyId: string) => {
+    const fetchFamily = async (familyId: string, retries = 2) => {
         try {
+            console.log(`Fetching family: ${familyId}`);
             const { data, error } = await supabase.from('families').select('*').eq('id', familyId).single();
+
+            // DEBUGGING: Trace fetchFamily
+            console.log('FetchFamily Result:', { data, error });
+            if (error || !data) {
+                Alert.alert('Debug Family API', `Failed to load family ${familyId}: ${error?.message || 'No data'}`);
+            }
+
             if (error) {
                 console.error('Error fetching family:', error);
+
+                if (retries > 0) {
+                    console.log(`Retrying fetchFamily... (${retries} left)`);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    return fetchFamily(familyId, retries - 1); // Retry recursively
+                } else {
+                    Alert.alert('Data Error', 'Could not load your family details. Please try again.');
+                }
                 return;
             }
             if (data) setFamily(data);
-        } catch (e) {
+        } catch (e: any) {
             console.error('Exception fetching family:', e);
+            Alert.alert('Family Exception', e.message || JSON.stringify(e));
+            if (retries > 0) {
+                await new Promise(resolve => setTimeout(() => resolve(null), 500));
+                return fetchFamily(familyId, retries - 1);
+            }
         }
     };
 
@@ -209,7 +253,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 setUser(session?.user ?? null);
 
                 if (session?.user) {
-                    setLoading(true); // Ensure loading is true while fetching profile
+                    setLoading(true);
                     await withTimeout(fetchProfile(session.user.id), 5000).catch(() => { });
                 } else {
                     setProfile(null);
