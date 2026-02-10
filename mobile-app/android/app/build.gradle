@@ -83,8 +83,8 @@ android {
         applicationId "com.familycommandcenter"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 15
-        versionName "1.14"
+        versionCode 18
+        versionName "1.17"
     }
     buildFeatures {
         prefab true
@@ -122,6 +122,9 @@ android {
         pickFirst '**/libjscexecutor.so'
         pickFirst '**/libc++_shared.so'
         pickFirst '**/libfbjni.so'
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
