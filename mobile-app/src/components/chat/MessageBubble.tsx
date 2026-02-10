@@ -1,20 +1,52 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
-import { ChatMessage } from '../../types/schema'; // We need to update schema.ts to include ChatMessage
-import { useAuth } from '../../context/AuthContext';
+import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import { ChatMessage } from '../../types/schema';
+import { Check, CheckCheck, Clock } from 'lucide-react-native';
 
 interface MessageBubbleProps {
     message: ChatMessage & { sender?: { display_name: string; avatar_url?: string } };
     isOwn: boolean;
     showSenderName?: boolean;
+    onLongPress?: (message: ChatMessage) => void;
 }
 
-export const MessageBubble = ({ message, isOwn, showSenderName }: MessageBubbleProps) => {
+export const MessageBubble = ({ message, isOwn, showSenderName, onLongPress }: MessageBubbleProps) => {
+    // Determine status for own messages
+    const getStatusIcon = () => {
+        if (!message.id) return <Clock size={12} color="rgba(255,255,255,0.7)" />;
+
+        // Check if read by anyone else (assuming recipient_id is handled or group logic)
+        // Simplified: Since we know read_by acts as 'seen', check length or specific recipient
+        // For 1:1, if read_by > 1, it is read.
+        // For Group, maybe different logic, but let's stick to > 1 for now or check if it contains others.
+        // Actually, read_by usually starts with just [sender_id] (or empty until read? Context says created with [user.id])
+        // So if read_by.length > 1 => Read by someone.
+
+        const isRead = message.read_by && message.read_by.length > 1;
+
+        if (isRead) {
+            return <CheckCheck size={14} color="#4ade80" />; // Green for read
+        }
+
+        // If not read, show delivered (Double Grey) or Sent (Single Grey)
+        // Since we don't have a 'delivered' column, we'll simulate 'delivered' if it's saved (id exists)
+        // To make it distinct, let's say:
+        // 1 Tick = Just Sent (sent but maybe not pushed) - hard to distinguish in Supabase
+        // 2 Ticks = Delivered (on server)
+        // For now, let's just use Double Tick Grey for "Sent & Delivered to Server"
+        // and Blue/Green for Read.
+
+        return <CheckCheck size={14} color="rgba(255,255,255,0.7)" />;
+    };
+
     return (
-        <View style={[styles.container, isOwn ? styles.ownContainer : styles.otherContainer]}>
+        <TouchableOpacity
+            onLongPress={() => onLongPress && onLongPress(message)}
+            activeOpacity={0.9}
+            style={[styles.container, isOwn ? styles.ownContainer : styles.otherContainer]}
+        >
             {!isOwn && (
                 <View style={styles.avatarContainer}>
-                    {/* Placeholder or Image */}
                     {message.sender?.avatar_url ? (
                         <Image source={{ uri: message.sender.avatar_url }} style={styles.avatar} />
                     ) : (
@@ -32,11 +64,18 @@ export const MessageBubble = ({ message, isOwn, showSenderName }: MessageBubbleP
                 <Text style={[styles.text, isOwn ? styles.ownText : styles.otherText]}>
                     {message.content}
                 </Text>
-                <Text style={[styles.time, isOwn ? styles.ownTime : styles.otherTime]}>
-                    {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </Text>
+                <View style={styles.footer}>
+                    <Text style={[styles.time, isOwn ? styles.ownTime : styles.otherTime]}>
+                        {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                    {isOwn && (
+                        <View style={styles.statusContainer}>
+                            {getStatusIcon()}
+                        </View>
+                    )}
+                </View>
             </View>
-        </View>
+        </TouchableOpacity>
     );
 };
 
@@ -97,10 +136,15 @@ const styles = StyleSheet.create({
     otherText: {
         color: '#1e293b',
     },
+    footer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        marginTop: 4,
+        gap: 4,
+    },
     time: {
         fontSize: 10,
-        marginTop: 4,
-        alignSelf: 'flex-end',
     },
     ownTime: {
         color: 'rgba(255,255,255,0.7)',
@@ -114,4 +158,7 @@ const styles = StyleSheet.create({
         color: '#6366f1',
         marginBottom: 2,
     },
+    statusContainer: {
+        marginLeft: 2,
+    }
 });

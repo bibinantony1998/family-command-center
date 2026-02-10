@@ -75,7 +75,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [myFamilies, setMyFamilies] = useState<Family[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const fetchProfile = async (userId: string, retries = 2) => {
+    const fetchProfile = async (userId: string, retries = 2): Promise<void> => {
         try {
             const { data, error } = await supabase
                 .from('profiles')
@@ -127,7 +127,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
     };
 
-    const fetchFamily = async (familyId: string, retries = 2) => {
+    const fetchFamily = async (familyId: string, retries = 2): Promise<void> => {
         try {
             console.log(`Fetching family: ${familyId}`);
             const { data, error } = await supabase.from('families').select('*').eq('id', familyId).single();

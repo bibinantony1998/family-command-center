@@ -4,6 +4,7 @@ export type RootStackParamList = {
     Main: undefined;
     Profile: undefined;
     Dashboard: undefined;
+    OnboardingJoinFamily: undefined;
 
     // Games
     Game_ColorChaos: undefined;

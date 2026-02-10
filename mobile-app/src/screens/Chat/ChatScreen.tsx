@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Keyboard
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { ChatMessage } from '../../types/schema';
+import { KeyManager } from '../../lib/encryption';
 import { MessageBubble } from '../../components/chat/MessageBubble';
 import { Send, ArrowLeft } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,51 +25,86 @@ export default function ChatScreen() {
     const [inputText, setInputText] = useState('');
     const [sending, setSending] = useState(false);
     const flatListRef = useRef<FlatList>(null);
+    const counterpartKeyRef = useRef<string | null>(null);
 
     useEffect(() => {
         if (!family?.id) return;
 
-        fetchMessages();
-        markAsRead();
+        const initEncryptionAndFetch = async () => {
+            // Initialize encryption keys
+            if (user?.id) {
+                await KeyManager.initialize(user.id);
+            }
+            // Fetch counterpart's public key for DMs
+            if (recipientId) {
+                const { data: profileData } = await supabase
+                    .from('profiles')
+                    .select('public_key')
+                    .eq('id', recipientId)
+                    .single();
+                counterpartKeyRef.current = profileData?.public_key || null;
+            }
+            await fetchMessages();
+            markAsRead();
+        };
+        initEncryptionAndFetch();
 
         const channel = supabase
             .channel(`chat:${recipientId || 'group'}`)
             .on('postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `family_id=eq.${family.id}` },
-                (payload) => {
+                { event: '*', schema: 'public', table: 'chat_messages', filter: `family_id=eq.${family.id}` },
+                async (payload) => {
+                    const eventType = payload.eventType;
                     const newMsg = payload.new as ChatMessage;
+                    const oldMsg = payload.old as ChatMessage;
 
-                    // Filter: Only add if it belongs to this chat context
-                    let isRelevant = false;
-                    if (recipientId) {
-                        // DM: Sender is recipient, OR Recipient is recipient (my sent msg from other device)
-                        // AND Sender is ME
-                        // Actually:
-                        // If I am viewing DM with User B:
-                        // Show msgs where (sender=Me AND recipient=B) OR (sender=B AND recipient=Me)
-                        const isFromCounterpart = newMsg.sender_id === recipientId && newMsg.recipient_id === user?.id;
-                        const isFromMeToCounterpart = newMsg.sender_id === user?.id && newMsg.recipient_id === recipientId;
-                        if (isFromCounterpart || isFromMeToCounterpart) {
-                            isRelevant = true;
-                        }
-                    } else {
-                        // Group: recipient is NULL
-                        if (newMsg.recipient_id === null) {
-                            isRelevant = true;
-                        }
-                    }
-
-                    if (isRelevant) {
-                        setMessages((prev) => {
-                            if (prev.some(m => m.id === newMsg.id)) return prev;
-                            const updated = [...prev, newMsg];
-                            // Mark read immediately if relevant
-                            if (newMsg.sender_id !== user?.id) {
-                                markAsRead();
+                    if (eventType === 'INSERT') {
+                        // Filter: Only add if it belongs to this chat context
+                        let isRelevant = false;
+                        if (recipientId) {
+                            const isFromCounterpart = newMsg.sender_id === recipientId && newMsg.recipient_id === user?.id;
+                            const isFromMeToCounterpart = newMsg.sender_id === user?.id && newMsg.recipient_id === recipientId;
+                            if (isFromCounterpart || isFromMeToCounterpart) {
+                                isRelevant = true;
                             }
-                            return updated;
-                        });
-                        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+                        } else {
+                            if (newMsg.recipient_id === null) {
+                                isRelevant = true;
+                            }
+                        }
+
+                        if (isRelevant) {
+                            // Decrypt if encrypted
+                            let processedMsg = newMsg;
+                            if (newMsg.is_encrypted && counterpartKeyRef.current) {
+                                try {
+                                    const decrypted = await KeyManager.decryptMessage(newMsg.content, counterpartKeyRef.current);
+                                    processedMsg = { ...newMsg, content: decrypted };
+                                } catch (e) {
+                                    processedMsg = { ...newMsg, content: '🔒 Unable to decrypt' };
+                                }
+                            }
+                            setMessages((prev) => {
+                                if (prev.some(m => m.id === processedMsg.id)) return prev;
+                                const updated = [...prev, processedMsg];
+                                if (processedMsg.sender_id !== user?.id) {
+                                    markAsRead();
+                                }
+                                return updated;
+                            });
+                            setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+                        }
+                    } else if (eventType === 'DELETE') {
+                        setMessages((prev) => prev.filter(m => m.id !== oldMsg.id));
+                    } else if (eventType === 'UPDATE') {
+                        // Preserve decrypted content, only update metadata
+                        setMessages((prev) => prev.map(m => {
+                            if (m.id === newMsg.id) {
+                                const { content: _enc, ...metadata } = newMsg;
+                                return { ...m, ...metadata };
+                            }
+                            return m;
+                        }));
                     }
                 }
             )
@@ -84,19 +120,29 @@ export default function ChatScreen() {
             .from('chat_messages')
             .select('*, sender:profiles!sender_id(display_name, avatar_url)')
             .eq('family_id', family.id)
-            .order('created_at', { ascending: true }); // Oldest first for chat log
+            .order('created_at', { ascending: true });
 
         if (recipientId) {
-            // DM
             query = query.or(`and(sender_id.eq.${user?.id},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${user?.id})`);
         } else {
-            // Group
             query = query.is('recipient_id', null);
         }
 
         const { data, error } = await query;
         if (data) {
-            setMessages(data as any);
+            // Decrypt encrypted messages
+            const processed = await Promise.all((data as ChatMessage[]).map(async (msg: ChatMessage) => {
+                if (msg.is_encrypted && counterpartKeyRef.current) {
+                    try {
+                        const decrypted = await KeyManager.decryptMessage(msg.content, counterpartKeyRef.current);
+                        return { ...msg, content: decrypted };
+                    } catch (e) {
+                        return { ...msg, content: '🔒 Unable to decrypt' };
+                    }
+                }
+                return msg;
+            }));
+            setMessages(processed as any);
             setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
         }
     };
@@ -119,11 +165,25 @@ export default function ChatScreen() {
         const content = inputText.trim();
         setInputText(''); // Optimistic clear
 
+        let finalContent = content;
+        let isEncrypted = false;
+
+        // Encrypt for DMs if counterpart key is available
+        if (recipientId && counterpartKeyRef.current) {
+            try {
+                finalContent = await KeyManager.encryptMessage(content, counterpartKeyRef.current);
+                isEncrypted = true;
+            } catch (e) {
+                console.error('Encryption failed, sending plaintext:', e);
+            }
+        }
+
         const { error } = await supabase.from('chat_messages').insert({
             family_id: family.id,
             sender_id: user.id,
             recipient_id: recipientId,
-            content: content,
+            content: finalContent,
+            is_encrypted: isEncrypted,
             read_by: [user.id]
         });
 
@@ -132,6 +192,30 @@ export default function ChatScreen() {
             setInputText(content); // Restore
         }
         setSending(false);
+    };
+
+    const handleDeleteMessage = async (message: ChatMessage) => {
+        if (message.sender_id !== user?.id) return;
+
+        Alert.alert(
+            "Delete Message",
+            "Are you sure you want to delete this message?",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                        const { error } = await supabase
+                            .from('chat_messages')
+                            .delete()
+                            .eq('id', message.id);
+
+                        if (error) Alert.alert("Error", "Could not delete message");
+                    }
+                }
+            ]
+        );
     };
 
     return (
@@ -158,6 +242,7 @@ export default function ChatScreen() {
                             message={item}
                             isOwn={item.sender_id === user?.id}
                             showSenderName={!recipientId && item.sender_id !== user?.id}
+                            onLongPress={handleDeleteMessage}
                         />
                     )}
                     contentContainerStyle={styles.listContent}

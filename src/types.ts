@@ -80,6 +80,9 @@ export interface ChatMessage {
     recipient_id: string | null; // null = group
     content: string;
     is_read: boolean;
+    read_by: string[]; // UUIDs
+    is_encrypted?: boolean;
+    nonce?: string;
     created_at: string;
     // Join
     sender?: Profile;

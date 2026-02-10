@@ -56,5 +56,7 @@ export interface ChatMessage {
     content: string;
     is_read: boolean;
     read_by: string[];
+    is_encrypted?: boolean;
+    nonce?: string;
     created_at: string;
 }

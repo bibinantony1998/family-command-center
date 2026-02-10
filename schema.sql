@@ -966,3 +966,27 @@ begin
   );
 end;
 $$;
+
+-- 12. E2E ENCRYPTION UPDATES
+-- Profiles Update: Add public_key for E2E encryption
+-- This key will be used by other users to encrypt messages for this user.
+ALTER TABLE profiles 
+ADD COLUMN IF NOT EXISTS public_key TEXT;
+
+-- Messages Update: Add fields for encrypted content
+-- 'content' will store the base64 encoded ciphertext if is_encrypted is true.
+-- 'nonce' is required for decryption (IV/Nonce).
+-- 'is_encrypted' flags whether the message content is encrypted.
+ALTER TABLE chat_messages 
+ADD COLUMN IF NOT EXISTS nonce TEXT;
+
+ALTER TABLE chat_messages 
+ADD COLUMN IF NOT EXISTS is_encrypted BOOLEAN DEFAULT FALSE;
+
+-- Optional: Create a separate table for Group Keys if implementing group encryption later
+-- CREATE TABLE group_keys (
+--   group_id UUID REFERENCES families(id),
+--   member_id UUID REFERENCES profiles(id),
+--   encrypted_key TEXT NOT NULL,
+--   PRIMARY KEY (group_id, member_id)
+-- );
