@@ -967,26 +967,75 @@ begin
 end;
 $$;
 
--- 12. E2E ENCRYPTION UPDATES
--- Profiles Update: Add public_key for E2E encryption
--- This key will be used by other users to encrypt messages for this user.
-ALTER TABLE profiles 
+-- 12. E2E ENCRYPTION
+
+-- Profiles: Add public_key (legacy single-key, kept for backward compat)
+ALTER TABLE profiles
 ADD COLUMN IF NOT EXISTS public_key TEXT;
 
--- Messages Update: Add fields for encrypted content
--- 'content' will store the base64 encoded ciphertext if is_encrypted is true.
--- 'nonce' is required for decryption (IV/Nonce).
--- 'is_encrypted' flags whether the message content is encrypted.
-ALTER TABLE chat_messages 
+-- Messages: Add fields for encrypted content
+ALTER TABLE chat_messages
 ADD COLUMN IF NOT EXISTS nonce TEXT;
 
-ALTER TABLE chat_messages 
+ALTER TABLE chat_messages
 ADD COLUMN IF NOT EXISTS is_encrypted BOOLEAN DEFAULT FALSE;
 
--- Optional: Create a separate table for Group Keys if implementing group encryption later
--- CREATE TABLE group_keys (
---   group_id UUID REFERENCES families(id),
---   member_id UUID REFERENCES profiles(id),
---   encrypted_key TEXT NOT NULL,
---   PRIMARY KEY (group_id, member_id)
--- );
+-- 13. MULTI-DEVICE E2E ENCRYPTION
+
+-- User Devices table: each device has its own X25519 keypair
+CREATE TABLE IF NOT EXISTS user_devices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    device_id TEXT NOT NULL,           -- Unique per-device identifier (UUID generated client-side)
+    device_name TEXT NOT NULL,         -- "Chrome Web", "iPhone App", "Android App", etc.
+    public_key TEXT NOT NULL,          -- Base64-encoded X25519 public key
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_active TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, device_id)
+);
+
+ALTER TABLE user_devices ENABLE ROW LEVEL SECURITY;
+
+-- Public keys are inherently safe to share (foundation of public-key crypto)
+CREATE POLICY "Authenticated users can view device keys" ON user_devices
+    FOR SELECT USING (auth.uid() IS NOT NULL);
+
+CREATE POLICY "Users can insert own devices" ON user_devices
+    FOR INSERT WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "Users can update own devices" ON user_devices
+    FOR UPDATE USING (user_id = auth.uid());
+
+CREATE POLICY "Users can delete own devices" ON user_devices
+    FOR DELETE USING (user_id = auth.uid());
+
+-- Auto-remove oldest device when limit (5) is exceeded
+CREATE OR REPLACE FUNCTION check_device_limit()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (SELECT COUNT(*) FROM user_devices WHERE user_id = NEW.user_id) >= 5 THEN
+        DELETE FROM user_devices
+        WHERE id = (
+            SELECT id FROM user_devices
+            WHERE user_id = NEW.user_id
+            ORDER BY last_active ASC
+            LIMIT 1
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER enforce_device_limit
+    BEFORE INSERT ON user_devices
+    FOR EACH ROW
+    EXECUTE FUNCTION check_device_limit();
+
+-- Chat messages: multi-device encryption fields
+ALTER TABLE chat_messages
+    ADD COLUMN IF NOT EXISTS encrypted_keys JSONB DEFAULT NULL;
+-- Format: { "device_id_1": "{n: nonce, k: encrypted_symmetric_key}", ... }
+
+ALTER TABLE chat_messages
+    ADD COLUMN IF NOT EXISTS sender_device_id TEXT DEFAULT NULL;
+
