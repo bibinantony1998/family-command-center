@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import type { ChatMessage, Profile } from '../../types';
 import { MessageBubble } from './MessageBubble';
 import { Send } from 'lucide-react';
-import { KeyManager } from '../../lib/encryption';
+import { KeyManager, type DeviceKey } from '../../lib/encryption';
 
 interface ChatWindowProps {
     recipientId: string | null; // null = group
@@ -16,14 +16,18 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
     const [newMessage, setNewMessage] = useState('');
     const [loading, setLoading] = useState(true);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const counterpartKeyRef = useRef<string | null>(null);
+
+    // Multi-device: store ALL device keys for the recipient + sender
+    const recipientDeviceKeysRef = useRef<DeviceKey[]>([]);
+    const senderDeviceKeysRef = useRef<DeviceKey[]>([]);
+    // Map of deviceId -> publicKey for quick lookup during decryption
+    const deviceKeyMapRef = useRef<Map<string, string>>(new Map());
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
     useEffect(() => {
-        // Scroll on new messages
         scrollToBottom();
     }, [messages]);
 
@@ -34,7 +38,6 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
         }
 
         const markAsRead = async () => {
-            // Optimistic Update: Mark all unread messages from others as read locally immediately
             setMessages(prev => prev.map(msg => {
                 if (msg.sender_id !== currentProfile.id) {
                     const readBy = msg.read_by || [];
@@ -45,16 +48,73 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
                 return msg;
             }));
 
-            // Call RPC to atomically update read_by array for all relevant messages in DB
             const { error } = await supabase.rpc('mark_messages_read', {
                 p_family_id: familyId,
-                p_recipient_id: recipientId // Optional param for RPC to narrow scope
+                p_recipient_id: recipientId
             });
 
             if (error) console.error("Error marking read:", error);
         };
 
-        // Fetch initial messages
+        /**
+         * Decrypt a message using the appropriate strategy:
+         * - New multi-device format: has encrypted_keys
+         * - Legacy single-key format: no encrypted_keys
+         */
+        const decryptMessage = async (msg: ChatMessage): Promise<ChatMessage> => {
+            if (!msg.is_encrypted) return msg;
+
+            try {
+                // New multi-device format
+                if (msg.encrypted_keys && Object.keys(msg.encrypted_keys).length > 0) {
+                    // Find sender's device public key
+                    const senderDevicePubKey = msg.sender_device_id
+                        ? deviceKeyMapRef.current.get(msg.sender_device_id)
+                        : null;
+
+                    if (!senderDevicePubKey) {
+                        // Try to fetch the sender's device key
+                        const { data } = await supabase
+                            .from('user_devices')
+                            .select('public_key')
+                            .eq('device_id', msg.sender_device_id || '')
+                            .single();
+
+                        if (data?.public_key) {
+                            deviceKeyMapRef.current.set(msg.sender_device_id!, data.public_key);
+                            const decrypted = await KeyManager.decryptMultiDevice(
+                                msg.content, msg.encrypted_keys, data.public_key
+                            );
+                            return { ...msg, content: decrypted };
+                        }
+                        return { ...msg, content: '🔒 Encrypted on another device' };
+                    }
+
+                    const decrypted = await KeyManager.decryptMultiDevice(
+                        msg.content, msg.encrypted_keys, senderDevicePubKey
+                    );
+                    return { ...msg, content: decrypted };
+                }
+
+                // Legacy format: try old single-key decryption
+                // Fetch sender's legacy public_key from profiles
+                const { data: profileData } = await supabase
+                    .from('profiles')
+                    .select('public_key')
+                    .eq('id', msg.sender_id)
+                    .single();
+
+                if (profileData?.public_key) {
+                    const decrypted = await KeyManager.decryptLegacy(msg.content, profileData.public_key);
+                    return { ...msg, content: decrypted };
+                }
+
+                return { ...msg, content: '🔒 Encrypted on another device' };
+            } catch {
+                return { ...msg, content: '🔒 Unable to decrypt' };
+            }
+        };
+
         const fetchMessages = async () => {
             try {
                 setLoading(true);
@@ -65,10 +125,8 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
                     .order('created_at', { ascending: true });
 
                 if (recipientId) {
-                    // Direct Message: (sender=me & recipient=them) OR (sender=them & recipient=me)
                     query = query.or(`and(sender_id.eq.${currentProfile.id},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${currentProfile.id})`);
                 } else {
-                    // Group Message: recipient_id is null
                     query = query.is('recipient_id', null);
                 }
 
@@ -77,21 +135,10 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
                 if (error) {
                     console.error('Error fetching messages:', error);
                 } else {
-                    // Decrypt encrypted messages
                     const rawMessages = (data as unknown as ChatMessage[]) || [];
-                    const processed = await Promise.all(rawMessages.map(async (msg) => {
-                        if (msg.is_encrypted && counterpartKeyRef.current) {
-                            try {
-                                const decrypted = await KeyManager.decryptMessage(msg.content, counterpartKeyRef.current);
-                                return { ...msg, content: decrypted };
-                            } catch {
-                                return { ...msg, content: '\ud83d\udd12 Unable to decrypt' };
-                            }
-                        }
-                        return msg;
-                    }));
+                    const processed = await Promise.all(rawMessages.map(decryptMessage));
                     setMessages(processed);
-                    markAsRead(); // Mark visible messages as read
+                    markAsRead();
                 }
             } catch (err) {
                 console.error("Exception in fetchMessages:", err);
@@ -101,17 +148,24 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
         };
 
         const initEncryptionAndFetch = async () => {
-            // Initialize encryption keys
+            // Initialize encryption keys & register device
             await KeyManager.initialize(currentProfile.id);
 
-            // Fetch counterpart's public key for DMs
+            // Fetch device keys for DM counterpart and self
             if (recipientId) {
-                const { data: profileData } = await supabase
-                    .from('profiles')
-                    .select('public_key')
-                    .eq('id', recipientId)
-                    .single();
-                counterpartKeyRef.current = profileData?.public_key || null;
+                const [recipientKeys, senderKeys] = await Promise.all([
+                    KeyManager.fetchDeviceKeys(recipientId),
+                    KeyManager.fetchDeviceKeys(currentProfile.id)
+                ]);
+                recipientDeviceKeysRef.current = recipientKeys;
+                senderDeviceKeysRef.current = senderKeys;
+
+                // Build device key map for decryption
+                const map = new Map<string, string>();
+                [...recipientKeys, ...senderKeys].forEach(dk => {
+                    map.set(dk.device_id, dk.public_key);
+                });
+                deviceKeyMapRef.current = map;
             }
 
             await fetchMessages();
@@ -124,7 +178,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
             .on(
                 'postgres_changes',
                 {
-                    event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+                    event: '*',
                     schema: 'public',
                     table: 'chat_messages'
                 },
@@ -138,44 +192,28 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
                         return;
                     }
 
-                    // For INSERT and UPDATE
                     if (!newMsg || newMsg.family_id !== familyId) return;
 
-                    // Manual filter for safety
-                    if (newMsg.family_id !== familyId) return;
-
-                    // Filter if relevant to current view
                     let isRelevant = false;
                     if (recipientId) {
-                        // Is this a DM between me and this person?
                         const isFromMeToThem = newMsg.sender_id === currentProfile.id && newMsg.recipient_id === recipientId;
                         const isFromThemToMe = newMsg.sender_id === recipientId && newMsg.recipient_id === currentProfile.id;
                         if (isFromMeToThem || isFromThemToMe) isRelevant = true;
                     } else {
-                        // Is this a group message?
                         if (newMsg.recipient_id === null) isRelevant = true;
                     }
 
                     if (isRelevant) {
                         if (eventType === 'INSERT') {
-                            // Fetch sender details
                             const { data: senderData } = await supabase
                                 .from('profiles')
                                 .select('display_name, avatar_url')
                                 .eq('id', newMsg.sender_id)
                                 .single();
 
-                            // Decrypt if encrypted
-                            let displayContent = newMsg.content;
-                            if (newMsg.is_encrypted && counterpartKeyRef.current) {
-                                try {
-                                    displayContent = await KeyManager.decryptMessage(newMsg.content, counterpartKeyRef.current);
-                                } catch {
-                                    displayContent = '\ud83d\udd12 Unable to decrypt';
-                                }
-                            }
-
-                            const msgWithSender = { ...newMsg, content: displayContent, sender: senderData as unknown as Profile };
+                            // Decrypt the new message
+                            const decryptedMsg = await decryptMessage(newMsg);
+                            const msgWithSender = { ...decryptedMsg, sender: senderData as unknown as Profile };
 
                             setMessages(prev => {
                                 if (prev.some(m => m.id === msgWithSender.id)) return prev;
@@ -186,7 +224,6 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
                                 markAsRead();
                             }
                         } else if (eventType === 'UPDATE') {
-                            // Preserve decrypted content, only update metadata
                             setMessages(prev => prev.map(m => {
                                 if (m.id === newMsg.id) {
                                     const { content: _unusedEncContent, ...metadata } = newMsg; void _unusedEncContent;
@@ -218,7 +255,6 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
             console.error("Error deleting message:", error);
             alert("Failed to delete message");
         }
-        // UI update handled by realtime subscription
     };
 
     const handleSend = async (e: React.FormEvent) => {
@@ -230,23 +266,36 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
 
         let finalContent = plainContent;
         let isEncrypted = false;
+        let encrypted_keys: Record<string, string> | null = null;
+        const senderDeviceId = KeyManager.getDeviceId();
 
-        // Encrypt for DMs if counterpart key is available
-        if (recipientId && counterpartKeyRef.current) {
-            try {
-                finalContent = await KeyManager.encryptMessage(plainContent, counterpartKeyRef.current);
-                isEncrypted = true;
-            } catch (e) {
-                console.error('Encryption failed, sending plaintext:', e);
+        // Multi-device encrypt for DMs
+        if (recipientId) {
+            const allDeviceKeys = [
+                ...recipientDeviceKeysRef.current,
+                ...senderDeviceKeysRef.current
+            ];
+
+            if (allDeviceKeys.length > 0) {
+                try {
+                    const result = await KeyManager.encryptForDevices(plainContent, allDeviceKeys);
+                    finalContent = result.content;
+                    encrypted_keys = result.encrypted_keys;
+                    isEncrypted = true;
+                } catch (e) {
+                    console.error('Multi-device encryption failed, sending plaintext:', e);
+                }
             }
         }
 
         const { data, error } = await supabase.from('chat_messages').insert({
             family_id: familyId,
             sender_id: currentProfile.id,
-            recipient_id: recipientId, // null for group
+            recipient_id: recipientId,
             content: finalContent,
             is_encrypted: isEncrypted,
+            encrypted_keys: encrypted_keys,
+            sender_device_id: senderDeviceId,
             read_by: [currentProfile.id]
         }).select().single();
 
@@ -255,7 +304,6 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
             alert("Failed to send message");
             setNewMessage(plainContent);
         } else if (data) {
-            // Optimistic update with PLAINTEXT for display
             const newMsgObj: ChatMessage = {
                 ...data,
                 content: plainContent, // Show plaintext locally
@@ -288,7 +336,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Area - Fixed at bottom of this container */}
+            {/* Input Area */}
             <form onSubmit={handleSend} className="p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white border-t border-slate-200 flex gap-2 shrink-0">
                 <input
                     type="text"

@@ -58,5 +58,17 @@ export interface ChatMessage {
     read_by: string[];
     is_encrypted?: boolean;
     nonce?: string;
+    encrypted_keys?: Record<string, string> | null; // { deviceId: encryptedSymKey }
+    sender_device_id?: string | null;
     created_at: string;
+}
+
+export interface UserDevice {
+    id: string;
+    user_id: string;
+    device_id: string;
+    device_name: string;
+    public_key: string;
+    created_at: string;
+    last_active: string;
 }

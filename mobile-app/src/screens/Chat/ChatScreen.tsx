@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Keyboard
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { ChatMessage } from '../../types/schema';
-import { KeyManager } from '../../lib/encryption';
+import { KeyManager, DeviceKey } from '../../lib/encryption';
 import { MessageBubble } from '../../components/chat/MessageBubble';
 import { Send, ArrowLeft } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,7 +17,6 @@ export default function ChatScreen() {
     const navigation = useNavigation();
     const route = useRoute<ChatScreenRouteProp>();
 
-    // Params might be undefined if not strictly typed in some nav setups, safe check
     const recipientId = route.params?.recipientId || null;
     const name = route.params?.name || 'Chat';
 
@@ -25,25 +24,97 @@ export default function ChatScreen() {
     const [inputText, setInputText] = useState('');
     const [sending, setSending] = useState(false);
     const flatListRef = useRef<FlatList>(null);
-    const counterpartKeyRef = useRef<string | null>(null);
+
+    // Multi-device: store ALL device keys for recipient + sender
+    const recipientDeviceKeysRef = useRef<DeviceKey[]>([]);
+    const senderDeviceKeysRef = useRef<DeviceKey[]>([]);
+    // Map of deviceId -> publicKey for quick lookup during decryption
+    const deviceKeyMapRef = useRef<Map<string, string>>(new Map());
+
+    /**
+     * Decrypt a message using the appropriate strategy:
+     * - New multi-device format: has encrypted_keys
+     * - Legacy single-key format: no encrypted_keys
+     */
+    const decryptMessage = async (msg: ChatMessage): Promise<ChatMessage> => {
+        if (!msg.is_encrypted) return msg;
+
+        try {
+            // New multi-device format
+            if (msg.encrypted_keys && Object.keys(msg.encrypted_keys).length > 0) {
+                // Find sender's device public key
+                let senderDevicePubKey = msg.sender_device_id
+                    ? deviceKeyMapRef.current.get(msg.sender_device_id)
+                    : null;
+
+                if (!senderDevicePubKey && msg.sender_device_id) {
+                    // Try to fetch the sender's device key
+                    const { data } = await supabase
+                        .from('user_devices')
+                        .select('public_key')
+                        .eq('device_id', msg.sender_device_id)
+                        .single();
+
+                    if (data?.public_key) {
+                        deviceKeyMapRef.current.set(msg.sender_device_id, data.public_key);
+                        senderDevicePubKey = data.public_key;
+                    }
+                }
+
+                if (!senderDevicePubKey) {
+                    return { ...msg, content: '🔒 Encrypted on another device' };
+                }
+
+                const decrypted = await KeyManager.decryptMultiDevice(
+                    msg.content, msg.encrypted_keys, senderDevicePubKey
+                );
+                return { ...msg, content: decrypted };
+            }
+
+            // Legacy format: try old single-key decryption
+            const { data: profileData } = await supabase
+                .from('profiles')
+                .select('public_key')
+                .eq('id', msg.sender_id)
+                .single();
+
+            if (profileData?.public_key) {
+                const decrypted = await KeyManager.decryptLegacy(msg.content, profileData.public_key);
+                return { ...msg, content: decrypted };
+            }
+
+            return { ...msg, content: '🔒 Encrypted on another device' };
+        } catch {
+            return { ...msg, content: '🔒 Unable to decrypt' };
+        }
+    };
 
     useEffect(() => {
         if (!family?.id) return;
 
         const initEncryptionAndFetch = async () => {
-            // Initialize encryption keys
+            // Initialize encryption keys & register device
             if (user?.id) {
                 await KeyManager.initialize(user.id);
             }
-            // Fetch counterpart's public key for DMs
-            if (recipientId) {
-                const { data: profileData } = await supabase
-                    .from('profiles')
-                    .select('public_key')
-                    .eq('id', recipientId)
-                    .single();
-                counterpartKeyRef.current = profileData?.public_key || null;
+
+            // Fetch device keys for DM counterpart and self
+            if (recipientId && user?.id) {
+                const [recipientKeys, senderKeys] = await Promise.all([
+                    KeyManager.fetchDeviceKeys(recipientId),
+                    KeyManager.fetchDeviceKeys(user.id)
+                ]);
+                recipientDeviceKeysRef.current = recipientKeys;
+                senderDeviceKeysRef.current = senderKeys;
+
+                // Build device key map for decryption
+                const map = new Map<string, string>();
+                [...recipientKeys, ...senderKeys].forEach(dk => {
+                    map.set(dk.device_id, dk.public_key);
+                });
+                deviceKeyMapRef.current = map;
             }
+
             await fetchMessages();
             markAsRead();
         };
@@ -59,7 +130,6 @@ export default function ChatScreen() {
                     const oldMsg = payload.old as ChatMessage;
 
                     if (eventType === 'INSERT') {
-                        // Filter: Only add if it belongs to this chat context
                         let isRelevant = false;
                         if (recipientId) {
                             const isFromCounterpart = newMsg.sender_id === recipientId && newMsg.recipient_id === user?.id;
@@ -74,16 +144,9 @@ export default function ChatScreen() {
                         }
 
                         if (isRelevant) {
-                            // Decrypt if encrypted
-                            let processedMsg = newMsg;
-                            if (newMsg.is_encrypted === true && counterpartKeyRef.current) {
-                                try {
-                                    const decrypted = await KeyManager.decryptMessage(newMsg.content, counterpartKeyRef.current);
-                                    processedMsg = { ...newMsg, content: decrypted };
-                                } catch (e) {
-                                    processedMsg = { ...newMsg, content: '🔒 Unable to decrypt' };
-                                }
-                            }
+                            // Decrypt the new message
+                            const processedMsg = await decryptMessage(newMsg);
+
                             setMessages((prev) => {
                                 if (prev.some(m => m.id === processedMsg.id)) return prev;
                                 const updated = [...prev, processedMsg];
@@ -130,18 +193,7 @@ export default function ChatScreen() {
 
         const { data, error } = await query;
         if (data) {
-            // Decrypt encrypted messages
-            const processed = await Promise.all((data as ChatMessage[]).map(async (msg: ChatMessage) => {
-                if (msg.is_encrypted === true && counterpartKeyRef.current) {
-                    try {
-                        const decrypted = await KeyManager.decryptMessage(msg.content, counterpartKeyRef.current);
-                        return { ...msg, content: decrypted };
-                    } catch (e) {
-                        return { ...msg, content: '🔒 Unable to decrypt' };
-                    }
-                }
-                return msg;
-            }));
+            const processed = await Promise.all((data as ChatMessage[]).map(decryptMessage));
             setMessages(processed as any);
             setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
         }
@@ -163,18 +215,29 @@ export default function ChatScreen() {
         setSending(true);
 
         const content = inputText.trim();
-        setInputText(''); // Optimistic clear
+        setInputText('');
 
         let finalContent = content;
         let isEncrypted = false;
+        let encrypted_keys: Record<string, string> | null = null;
+        const senderDeviceId = KeyManager.getDeviceId();
 
-        // Encrypt for DMs if counterpart key is available
-        if (recipientId && counterpartKeyRef.current) {
-            try {
-                finalContent = await KeyManager.encryptMessage(content, counterpartKeyRef.current);
-                isEncrypted = true;
-            } catch (e) {
-                console.error('Encryption failed, sending plaintext:', e);
+        // Multi-device encrypt for DMs
+        if (recipientId) {
+            const allDeviceKeys = [
+                ...recipientDeviceKeysRef.current,
+                ...senderDeviceKeysRef.current
+            ];
+
+            if (allDeviceKeys.length > 0) {
+                try {
+                    const result = await KeyManager.encryptForDevices(content, allDeviceKeys);
+                    finalContent = result.content;
+                    encrypted_keys = result.encrypted_keys;
+                    isEncrypted = true;
+                } catch (e) {
+                    console.error('Multi-device encryption failed, sending plaintext:', e);
+                }
             }
         }
 
@@ -184,12 +247,14 @@ export default function ChatScreen() {
             recipient_id: recipientId,
             content: finalContent,
             is_encrypted: isEncrypted,
+            encrypted_keys: encrypted_keys,
+            sender_device_id: senderDeviceId,
             read_by: [user.id]
         });
 
         if (error) {
             Alert.alert('Error', 'Failed to send');
-            setInputText(content); // Restore
+            setInputText(content);
         }
         setSending(false);
     };
