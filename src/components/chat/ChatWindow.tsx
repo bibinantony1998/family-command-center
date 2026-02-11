@@ -269,22 +269,33 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
         let encrypted_keys: Record<string, string> | null = null;
         const senderDeviceId = KeyManager.getDeviceId();
 
-        // Multi-device encrypt for DMs
+        // Multi-device encrypt for DMs — always fetch fresh device keys
         if (recipientId) {
-            const allDeviceKeys = [
-                ...recipientDeviceKeysRef.current,
-                ...senderDeviceKeysRef.current
-            ];
+            try {
+                const [freshRecipientKeys, freshSenderKeys] = await Promise.all([
+                    KeyManager.fetchDeviceKeys(recipientId),
+                    KeyManager.fetchDeviceKeys(currentProfile.id)
+                ]);
 
-            if (allDeviceKeys.length > 0) {
-                try {
+                // Update refs and map for future decryption
+                recipientDeviceKeysRef.current = freshRecipientKeys;
+                senderDeviceKeysRef.current = freshSenderKeys;
+                const map = new Map<string, string>();
+                [...freshRecipientKeys, ...freshSenderKeys].forEach(dk => {
+                    map.set(dk.device_id, dk.public_key);
+                });
+                deviceKeyMapRef.current = map;
+
+                const allDeviceKeys = [...freshRecipientKeys, ...freshSenderKeys];
+
+                if (allDeviceKeys.length > 0) {
                     const result = await KeyManager.encryptForDevices(plainContent, allDeviceKeys);
                     finalContent = result.content;
                     encrypted_keys = result.encrypted_keys;
                     isEncrypted = true;
-                } catch (e) {
-                    console.error('Multi-device encryption failed, sending plaintext:', e);
                 }
+            } catch (e) {
+                console.error('Multi-device encryption failed, sending plaintext:', e);
             }
         }
 
