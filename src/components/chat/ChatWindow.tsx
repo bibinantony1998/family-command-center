@@ -496,7 +496,10 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                 }).select('*, sender:sender_id(display_name, avatar_url)').single();
 
                 if (data) {
-                    setMessages(prev => [...prev, data as ChatMessage]);
+                    const sentMessage = data as ChatMessage;
+                    // Pre-populate the blob URL for the sender so they can see it immediately
+                    sentMessage.attachment_blob_url = URL.createObjectURL(file);
+                    setMessages(prev => [...prev, sentMessage]);
                 }
             } else if (error !== 'Transfer cancelled by user') {
                 setTransferError(error || 'Transfer failed');

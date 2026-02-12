@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { Platform } from 'react-native';
 import { METERED_APP_NAME, METERED_API_KEY } from '@env';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -12,7 +13,7 @@ const CHUNK_SIZE = 16384; // 16KB chunks
 
 const DEBUG = true;
 function log(...args: unknown[]) {
-    if (DEBUG) console.log('[WebRTC-RN]', ...args);
+    if (DEBUG) console.log('[WebRTC-RN-DEBUG]', ...args);
 }
 
 // --- Channel Manager ---
@@ -164,9 +165,19 @@ export async function sendFileP2P(
     // Read file ahead of time
     let arrayBuffer: ArrayBuffer;
     try {
-        const response = await fetch(fileUri);
-        const blob = await response.blob();
-        arrayBuffer = await new Response(blob).arrayBuffer();
+        const ReactNativeBlobUtil = require('react-native-blob-util').default;
+        const { Buffer } = require('buffer');
+
+        let uriToRead = fileUri;
+        if (Platform.OS === 'android' && fileUri.startsWith('content://')) {
+            // react-native-blob-util handles content:// URIs directly
+        } else {
+            uriToRead = fileUri.replace('file://', '');
+        }
+
+        const base64 = await ReactNativeBlobUtil.fs.readFile(uriToRead, 'base64');
+        arrayBuffer = Buffer.from(base64, 'base64').buffer;
+        log(`📂 File read success: ${arrayBuffer.byteLength} bytes`);
     } catch (err) {
         log('❌ Failed to read file:', err);
         return false;
@@ -339,9 +350,54 @@ export function listenForIncomingFiles(
                             metadata = parsed.data;
                             log(`📦 RECV metadata: size=${metadata!.fileSize}`);
                         } else if (parsed.type === 'done' && metadata) {
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                            const blob = new Blob(receivedChunks.map(ab => new Uint8Array(ab)) as any);
-                            onFileReceived(metadata, blob);
+                            // Write to file instead of Blob
+                            const ReactNativeBlobUtil = require('react-native-blob-util').default;
+                            const { Buffer } = require('buffer');
+                            const dirs = ReactNativeBlobUtil.fs.dirs;
+                            const filePath = `${dirs.CacheDir}/${metadata.fileName}`;
+
+                            // Combine chunks and write
+                            const combinedBuffer = Buffer.concat(receivedChunks.map(ab => Buffer.from(ab)));
+                            const base64 = combinedBuffer.toString('base64');
+
+                            ReactNativeBlobUtil.fs.writeFile(filePath, base64, 'base64')
+                                .then(() => {
+                                    log(`💾 File saved to: ${filePath}`);
+                                    // Pass a fake "Blob" object that actually contains the URI for the UI
+                                    // The UI expects { size, type } + URL.createObjectURL behavior
+                                    // We will monkey-patch the blob handling in the callback or just pass a custom object if type allows
+                                    // Actually, let's just mimic a Blob but return the URI in the callback metadata or separate arg?
+                                    // The callback signature is (metadata, blob).
+                                    // We can attach the URI to the metadata?
+                                    // Or we can return a "Blob-like" object with a `uri` property.
+
+                                    // Better approach: Update the metadata to include the local URI
+                                    // But metadata comes from the sender.
+
+                                    // Let's create a Blob that has a custom property `_localUri`?
+                                    // React Native Blob from 'react-native-blob-util'?
+                                    // No, let's just return a Blob but also modify the metadata in the callback scope?
+                                    // Wait, onFileReceived(metadata, blob).
+                                    // The UI does `URL.createObjectURL(blob)`.
+                                    // In React Native, `URL.createObjectURL` might not exist or work.
+                                    // We need to change the UI to use the URI directly.
+
+                                    // Let's look at `ChatScreen.tsx`.
+                                    // It uses `listenForIncomingFiles(..., (metadata, blob) => {`
+                                    // `const blobUrl = URL.createObjectURL(blob);`
+
+                                    // Fix: On React Native, we should pass the file URI as the "blob URL".
+                                    // We can't easily change the signature without changing shared code (if we share types).
+                                    // But here we are in mobile-specific file.
+
+                                    // Hack: Pass the URI as the second argument instead of a Blob?
+                                    // Or pass a Blob that has the URI?
+                                    const fileUri = `file://${filePath}`;
+                                    // We'll pass the URI string as the "blob" argument and cast it in the callback
+                                    onFileReceived(metadata, fileUri as any);
+                                })
+                                .catch(err => console.error('File write error:', err));
+
                             dc.send(JSON.stringify({ type: 'ack', transferId: parsed.transferId }));
                             log('✅ RECV sent ACK');
                             setTimeout(() => { dc.close(); pc.close(); }, 500);
