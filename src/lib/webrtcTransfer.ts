@@ -365,7 +365,7 @@ export function listenForIncomingFiles(
 
             pc.ondatachannel = (event) => {
                 dc = event.channel;
-                dc.onmessage = (msgEvent) => {
+                dc.onmessage = (msgEvent: any) => {
                     if (typeof msgEvent.data === 'string') {
                         try {
                             const parsed = JSON.parse(msgEvent.data);
