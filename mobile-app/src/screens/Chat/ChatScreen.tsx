@@ -386,7 +386,8 @@ export default function ChatScreen() {
             setTransferProgress(null);
 
             if (success) {
-                await supabase.from('chat_messages').insert({
+                // Insert into DB
+                const { data } = await supabase.from('chat_messages').insert({
                     family_id: family.id,
                     sender_id: user.id,
                     recipient_id: recipientId,
@@ -395,7 +396,15 @@ export default function ChatScreen() {
                     attachment_name: asset.fileName,
                     attachment_size: fileSize,
                     read_by: [user.id]
-                });
+                }).select().single();
+
+                // Optimistically update local state with the local URI so it renders immediately
+                if (data) {
+                    setMessages(prev => [
+                        { ...data, attachment_blob_url: asset.uri, sender: { display_name: 'Me', avatar_url: null } },
+                        ...prev
+                    ]);
+                }
             } else {
                 Alert.alert('Transfer Failed', 'File queued for when recipient comes online.');
                 queueAttachment({
@@ -421,23 +430,52 @@ export default function ChatScreen() {
             cleanup = listenForIncomingFiles(
                 user.id, family.id, recipientId,
                 async (metadata, blob) => {
-                    const blobUrl = URL.createObjectURL(blob);
-                    setMessages(prev => prev.map(m => {
-                        if (m.attachment_name === metadata.fileName &&
-                            m.sender_id === metadata.senderId &&
-                            !m.attachment_blob_url) {
-                            return { ...m, attachment_blob_url: blobUrl };
-                        }
-                        return m;
-                    }));
+                    // React Native Image component doesn't support 'blob:' URLs directly.
+                    // We must convert to Base64 Data URL.
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        const base64data = reader.result as string;
+                        console.log(`[MobileAttachment] Converted blob to base64, length=${base64data.length}`);
+
+                        // Retry logic for race condition
+                        let attempts = 0;
+                        const maxAttempts = 10;
+                        const attemptLoop = setInterval(() => {
+                            attempts++;
+                            if (attempts > maxAttempts) {
+                                clearInterval(attemptLoop);
+                                return;
+                            }
+
+                            setMessages(prev => {
+                                const foundIndex = prev.findIndex(m =>
+                                    m.attachment_name === metadata.fileName &&
+                                    m.sender_id === metadata.senderId &&
+                                    !m.attachment_blob_url
+                                );
+
+                                if (foundIndex !== -1) {
+                                    console.log(`[MobileAttachment] Found msg match, attaching.`);
+                                    const newMessages = [...prev];
+                                    newMessages[foundIndex] = { ...newMessages[foundIndex], attachment_blob_url: base64data };
+                                    clearInterval(attemptLoop);
+                                    return newMessages;
+                                }
+                                return prev;
+                            });
+                        }, 500);
+                    };
+                    reader.readAsDataURL(blob);
                 },
-                (p: number) => setTransferProgress(p)
+                (p) => setTransferProgress(p)
             );
         } catch (err) {
-            console.warn('[WebRTC] listenForIncomingFiles failed (native module may not be linked):', err);
+            console.error('Failed to start WebRTC listener:', err);
         }
 
-        return () => cleanup?.();
+        return () => {
+            if (cleanup) cleanup();
+        };
     }, [recipientId, family?.id, user?.id]);
 
     // Drain queue when recipient comes online

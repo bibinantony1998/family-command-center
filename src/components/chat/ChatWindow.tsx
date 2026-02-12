@@ -471,15 +471,58 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
             recipientId,
             async (metadata, blob) => {
                 const blobUrl = URL.createObjectURL(blob);
-                // The sender already inserted the DB record; we just attach the blob locally
-                setMessages(prev => prev.map(m => {
-                    if (m.attachment_name === metadata.fileName &&
-                        m.sender_id === metadata.senderId &&
-                        !m.attachment_blob_url) {
-                        return { ...m, attachment_blob_url: blobUrl };
+                console.log(`[Attachment] Received file ${metadata.fileName}, size=${metadata.fileSize}. Blob created: ${blobUrl}`);
+
+                // Retry logic: The message metadata might arrive slightly AFTER the file transfer finishes.
+                let attempts = 0;
+                const maxAttempts = 10;
+
+                const tryAttach = () => {
+                    setMessages(prev => {
+                        // Check if we have the message
+                        const foundIndex = prev.findIndex(m =>
+                            m.attachment_name === metadata.fileName &&
+                            m.sender_id === metadata.senderId &&
+                            !m.attachment_blob_url
+                        );
+
+                        if (foundIndex !== -1) {
+                            console.log(`[Attachment] Found matching message at index ${foundIndex}. Attaching blob.`);
+                            const newMessages = [...prev];
+                            newMessages[foundIndex] = { ...newMessages[foundIndex], attachment_blob_url: blobUrl };
+                            return newMessages;
+                        }
+
+                        // Not found yet
+                        return prev;
+                    });
+
+                    // Check if it was attached (we can't easily check the result of setMessages inside here without a ref or another effect)
+                    // So we'll trigger a check in the next tick via another specific timeout or just blindly retry?
+                    // Better approach: use a ref to track if we handled this transferId? 
+                    // Or just simplified: Check if we found it. If not, schedule next try.
+
+                    // Actually, setMessages is async. We can't know if it worked inside the updater immediately for the retry logic.
+                    // But we can check `messages` ref if we had one.
+                    // Let's just blindly retry a few times.
+                };
+
+                const attemptLoop = setInterval(() => {
+                    attempts++;
+                    // We need to check if it's already attached to avoid useless updates?
+                    // Actually, the `findIndex` check `!m.attachment_blob_url` handles ensuring we don't overwrite or do confirmed ones.
+
+                    if (attempts > maxAttempts) {
+                        console.warn(`[Attachment] Failed to find message meta for ${metadata.fileName} after ${maxAttempts} attempts.`);
+                        clearInterval(attemptLoop);
+                        return;
                     }
-                    return m;
-                }));
+
+                    tryAttach();
+                }, 500);
+
+                // Try immediately once
+                tryAttach();
             },
             (p) => setTransferProgress(p)
         );
