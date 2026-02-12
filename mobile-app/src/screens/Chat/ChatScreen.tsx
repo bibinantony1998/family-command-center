@@ -506,7 +506,7 @@ export default function ChatScreen() {
 
                         // Retry logic for race condition
                         let attempts = 0;
-                        const maxAttempts = 10;
+                        const maxAttempts = 20; // Increased to 10s
                         const attemptLoop = setInterval(() => {
                             attempts++;
                             if (attempts > maxAttempts) {

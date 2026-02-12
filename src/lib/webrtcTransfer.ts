@@ -433,7 +433,11 @@ export function listenForIncomingFiles(
                     let receivedBytes = 0;
 
                     dc.onopen = () => log('DataChannel OPEN on receiver side');
-                    dc.onerror = (err) => console.error('DataChannel ERROR:', err);
+                    dc.onerror = (err: any) => {
+                        if (cleanupCalled) return;
+                        if (err.error?.message === 'User-Initiated Abort, reason=Close called') return;
+                        console.error('DataChannel ERROR:', err);
+                    };
 
                     dc.onmessage = (msgEvent: any) => {
                         const data = msgEvent.data;

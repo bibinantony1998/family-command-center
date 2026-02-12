@@ -423,7 +423,10 @@ export function listenForIncomingFiles(
                     log(`Rx DataChannel open: ${dc.label}`);
 
                     dc.onopen = () => log('DataChannel OPEN on receiver side');
-                    dc.onerror = (err: any) => console.error('DataChannel ERROR:', err);
+                    dc.onerror = (err: any) => {
+                        if (cleanupCalled) return;
+                        console.error('DataChannel ERROR:', err);
+                    };
 
                     dc.onmessage = (msgEvent: any) => {
                         if (typeof msgEvent.data === 'string') {

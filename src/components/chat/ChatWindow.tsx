@@ -532,7 +532,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
 
                 // Retry logic: The message metadata might arrive slightly AFTER the file transfer finishes.
                 let attempts = 0;
-                const maxAttempts = 10;
+                const maxAttempts = 20; // Increased to 10s to handle slow DB inserts
 
                 const tryAttach = () => {
                     setMessages(prev => {
