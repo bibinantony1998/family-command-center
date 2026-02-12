@@ -933,6 +933,7 @@ create policy "Parents send chat messages" on chat_messages
     and sender_id = auth.uid()
   );
 
+
 -- Update: Parents can update messages (e.g. mark as read).
 -- ALLOW any parent in the family to update (specifically for marking read)
   );
@@ -1047,3 +1048,6 @@ ALTER TABLE chat_messages
     ADD COLUMN IF NOT EXISTS attachment_name TEXT DEFAULT NULL,
     ADD COLUMN IF NOT EXISTS attachment_size BIGINT DEFAULT NULL;
 
+-- 15. DELETE POLICY FOR CHAT MESSAGES
+CREATE POLICY "Senders can delete own messages" ON chat_messages
+  FOR DELETE USING (sender_id = auth.uid());

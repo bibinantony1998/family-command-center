@@ -13,11 +13,13 @@ import { usePresence } from '../../hooks/usePresence';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { sendFileP2P, listenForIncomingFiles } from '../../lib/webrtcTransfer';
 import { queueAttachment, getQueuedAttachments, drainQueueForRecipient, setOnQueueDrain } from '../../lib/attachmentQueue';
+import { useChat } from '../../context/ChatContext';
 
 type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>;
 
 export default function ChatScreen() {
     const { user, family } = useAuth();
+    const { refreshUnreadCounts } = useChat();
     const navigation = useNavigation();
     const route = useRoute<ChatScreenRouteProp>();
 
@@ -27,8 +29,11 @@ export default function ChatScreen() {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
     const [sending, setSending] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
     const [transferProgress, setTransferProgress] = useState<number | null>(null);
     const flatListRef = useRef<FlatList>(null);
+    const PAGE_SIZE = 20;
 
     const isDM = recipientId !== null;
     const { isUserOnline } = usePresence(family?.id || null, user?.id || null);
@@ -192,7 +197,8 @@ export default function ChatScreen() {
             .from('chat_messages')
             .select('*, sender:profiles!sender_id(display_name, avatar_url)')
             .eq('family_id', family.id)
-            .order('created_at', { ascending: true });
+            .order('created_at', { ascending: false })
+            .range(0, PAGE_SIZE - 1);
 
         if (recipientId) {
             query = query.or(`and(sender_id.eq.${user?.id},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${user?.id})`);
@@ -202,9 +208,47 @@ export default function ChatScreen() {
 
         const { data, error } = await query;
         if (data) {
-            const processed = await Promise.all((data as ChatMessage[]).map(decryptMessage));
+            const rawMessages = (data as ChatMessage[]).reverse();
+            const processed = await Promise.all(rawMessages.map(decryptMessage));
             setMessages(processed as any);
+            setHasMore(data.length >= PAGE_SIZE);
+            // Only scroll to end on initial load
             setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
+        }
+    };
+
+    const loadMoreMessages = async () => {
+        if (!family?.id || loadingMore || !hasMore) return;
+        setLoadingMore(true);
+
+        try {
+            const offset = messages.length;
+            let query = supabase
+                .from('chat_messages')
+                .select('*, sender:profiles!sender_id(display_name, avatar_url)')
+                .eq('family_id', family.id)
+                .order('created_at', { ascending: false })
+                .range(offset, offset + PAGE_SIZE - 1);
+
+            if (recipientId) {
+                query = query.or(`and(sender_id.eq.${user?.id},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${user?.id})`);
+            } else {
+                query = query.is('recipient_id', null);
+            }
+
+            const { data } = await query;
+            if (data && data.length > 0) {
+                const rawMessages = (data as ChatMessage[]).reverse();
+                const processed = await Promise.all(rawMessages.map(decryptMessage));
+                setMessages(prev => [...(processed as any), ...prev]);
+                setHasMore(data.length >= PAGE_SIZE);
+            } else {
+                setHasMore(false);
+            }
+        } catch (error) {
+            console.error('Error loading more messages:', error);
+        } finally {
+            setLoadingMore(false);
         }
     };
 
@@ -296,7 +340,12 @@ export default function ChatScreen() {
                             .delete()
                             .eq('id', message.id);
 
-                        if (error) Alert.alert("Error", "Could not delete message");
+                        if (error) {
+                            Alert.alert("Error", "Could not delete message");
+                        } else {
+                            setMessages(prev => prev.filter(m => m.id !== message.id));
+                            refreshUnreadCounts();
+                        }
                     }
                 }
             ]
@@ -457,8 +506,23 @@ export default function ChatScreen() {
                         />
                     )}
                     contentContainerStyle={styles.listContent}
-                    onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-                    onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+                    onContentSizeChange={(w, h) => {
+                        // Only scroll to bottom if we are not loading more history
+                        // This is a heuristic; deeper logic requires knowing if it was a new message vs load more
+                        if (!loadingMore && messages.length <= PAGE_SIZE + 2) {
+                            flatListRef.current?.scrollToEnd({ animated: true });
+                        }
+                    }}
+                    onScroll={({ nativeEvent }) => {
+                        if (nativeEvent.contentOffset.y <= 0 && hasMore && !loadingMore && messages.length > 0) {
+                            loadMoreMessages();
+                        }
+                    }}
+                    scrollEventThrottle={16}
+                    ListHeaderComponent={
+                        loadingMore ? <ActivityIndicator size="small" color="#6366f1" style={{ padding: 10 }} /> : null
+                    }
+                    maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
                     style={{ flex: 1 }}
                 />
 

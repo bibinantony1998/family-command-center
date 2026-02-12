@@ -18,11 +18,16 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [newMessage, setNewMessage] = useState('');
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
     const [transferProgress, setTransferProgress] = useState<number | null>(null);
     const [transferError, setTransferError] = useState<string | null>(null);
     const [showOfflineTooltip, setShowOfflineTooltip] = useState(false);
+    const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; messageId: string | null }>({ isOpen: false, messageId: null });
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const messagesContainerRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const PAGE_SIZE = 20;
 
     // Multi-device: store ALL device keys for the recipient + sender
     const recipientDeviceKeysRef = useRef<DeviceKey[]>([]);
@@ -37,6 +42,62 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+    /**
+     * Decrypt a message using the appropriate strategy:
+     * - New multi-device format: has encrypted_keys
+     * - Legacy single-key format: no encrypted_keys
+     */
+    const decryptMessage = async (msg: ChatMessage): Promise<ChatMessage> => {
+        if (!msg.is_encrypted) return msg;
+
+        try {
+            // New multi-device format
+            if (msg.encrypted_keys && Object.keys(msg.encrypted_keys).length > 0) {
+                const senderDevicePubKey = msg.sender_device_id
+                    ? deviceKeyMapRef.current.get(msg.sender_device_id)
+                    : null;
+
+                if (!senderDevicePubKey) {
+                    const { data } = await supabase
+                        .from('user_devices')
+                        .select('public_key')
+                        .eq('device_id', msg.sender_device_id || '')
+                        .single();
+
+                    if (data?.public_key) {
+                        deviceKeyMapRef.current.set(msg.sender_device_id!, data.public_key);
+                        const decrypted = await KeyManager.decryptMultiDevice(
+                            msg.content, msg.encrypted_keys, data.public_key
+                        );
+                        return { ...msg, content: decrypted };
+                    }
+                    return { ...msg, content: '🔒 Encrypted on another device' };
+                }
+
+                const decrypted = await KeyManager.decryptMultiDevice(
+                    msg.content, msg.encrypted_keys, senderDevicePubKey
+                );
+                return { ...msg, content: decrypted };
+            }
+
+            // Legacy format
+            const { data: profileData } = await supabase
+                .from('profiles')
+                .select('public_key')
+                .eq('id', msg.sender_id)
+                .single();
+
+            if (profileData?.public_key) {
+                const decrypted = await KeyManager.decryptLegacy(msg.content, profileData.public_key);
+                return { ...msg, content: decrypted };
+            }
+
+            return { ...msg, content: '🔒 Encrypted on another device' };
+        } catch {
+            return { ...msg, content: '🔒 Unable to decrypt' };
+        }
+    };
 
     useEffect(() => {
         if (!familyId) {
@@ -63,65 +124,6 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
             if (error) console.error("Error marking read:", error);
         };
 
-        /**
-         * Decrypt a message using the appropriate strategy:
-         * - New multi-device format: has encrypted_keys
-         * - Legacy single-key format: no encrypted_keys
-         */
-        const decryptMessage = async (msg: ChatMessage): Promise<ChatMessage> => {
-            if (!msg.is_encrypted) return msg;
-
-            try {
-                // New multi-device format
-                if (msg.encrypted_keys && Object.keys(msg.encrypted_keys).length > 0) {
-                    // Find sender's device public key
-                    const senderDevicePubKey = msg.sender_device_id
-                        ? deviceKeyMapRef.current.get(msg.sender_device_id)
-                        : null;
-
-                    if (!senderDevicePubKey) {
-                        // Try to fetch the sender's device key
-                        const { data } = await supabase
-                            .from('user_devices')
-                            .select('public_key')
-                            .eq('device_id', msg.sender_device_id || '')
-                            .single();
-
-                        if (data?.public_key) {
-                            deviceKeyMapRef.current.set(msg.sender_device_id!, data.public_key);
-                            const decrypted = await KeyManager.decryptMultiDevice(
-                                msg.content, msg.encrypted_keys, data.public_key
-                            );
-                            return { ...msg, content: decrypted };
-                        }
-                        return { ...msg, content: '🔒 Encrypted on another device' };
-                    }
-
-                    const decrypted = await KeyManager.decryptMultiDevice(
-                        msg.content, msg.encrypted_keys, senderDevicePubKey
-                    );
-                    return { ...msg, content: decrypted };
-                }
-
-                // Legacy format: try old single-key decryption
-                // Fetch sender's legacy public_key from profiles
-                const { data: profileData } = await supabase
-                    .from('profiles')
-                    .select('public_key')
-                    .eq('id', msg.sender_id)
-                    .single();
-
-                if (profileData?.public_key) {
-                    const decrypted = await KeyManager.decryptLegacy(msg.content, profileData.public_key);
-                    return { ...msg, content: decrypted };
-                }
-
-                return { ...msg, content: '🔒 Encrypted on another device' };
-            } catch {
-                return { ...msg, content: '🔒 Unable to decrypt' };
-            }
-        };
-
         const fetchMessages = async () => {
             try {
                 setLoading(true);
@@ -129,7 +131,8 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                     .from('chat_messages')
                     .select('*, sender:sender_id(display_name, avatar_url)')
                     .eq('family_id', familyId)
-                    .order('created_at', { ascending: true });
+                    .order('created_at', { ascending: false })
+                    .range(0, PAGE_SIZE - 1);
 
                 if (recipientId) {
                     query = query.or(`and(sender_id.eq.${currentProfile.id},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${currentProfile.id})`);
@@ -142,9 +145,10 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                 if (error) {
                     console.error('Error fetching messages:', error);
                 } else {
-                    const rawMessages = (data as unknown as ChatMessage[]) || [];
+                    const rawMessages = ((data as unknown as ChatMessage[]) || []).reverse();
                     const processed = await Promise.all(rawMessages.map(decryptMessage));
                     setMessages(processed);
+                    setHasMore(rawMessages.length >= PAGE_SIZE);
                     markAsRead();
                 }
             } catch (err) {
@@ -155,10 +159,8 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
         };
 
         const initEncryptionAndFetch = async () => {
-            // Initialize encryption keys & register device
             await KeyManager.initialize(currentProfile.id);
 
-            // Fetch device keys for DM counterpart and self
             if (recipientId) {
                 const [recipientKeys, senderKeys] = await Promise.all([
                     KeyManager.fetchDeviceKeys(recipientId),
@@ -167,7 +169,6 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                 recipientDeviceKeysRef.current = recipientKeys;
                 senderDeviceKeysRef.current = senderKeys;
 
-                // Build device key map for decryption
                 const map = new Map<string, string>();
                 [...recipientKeys, ...senderKeys].forEach(dk => {
                     map.set(dk.device_id, dk.public_key);
@@ -250,18 +251,71 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
 
     }, [familyId, currentProfile.id, recipientId]);
 
-    const handleDeleteMessage = async (messageId: string) => {
-        if (!confirm("Are you sure you want to delete this message?")) return;
+    const loadMoreMessages = async () => {
+        if (loadingMore || !hasMore) return;
+        setLoadingMore(true);
+
+        const container = messagesContainerRef.current;
+        const prevScrollHeight = container?.scrollHeight || 0;
+
+        try {
+            const offset = messages.length;
+            let query = supabase
+                .from('chat_messages')
+                .select('*, sender:sender_id(display_name, avatar_url)')
+                .eq('family_id', familyId)
+                .order('created_at', { ascending: false })
+                .range(offset, offset + PAGE_SIZE - 1);
+
+            if (recipientId) {
+                query = query.or(`and(sender_id.eq.${currentProfile.id},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${currentProfile.id})`);
+            } else {
+                query = query.is('recipient_id', null);
+            }
+
+            const { data, error } = await query;
+
+            if (error) {
+                console.error('Error loading more messages:', error);
+            } else {
+                const rawMessages = ((data as unknown as ChatMessage[]) || []).reverse();
+                const processed = await Promise.all(rawMessages.map(decryptMessage));
+                setMessages(prev => [...processed, ...prev]);
+                setHasMore(rawMessages.length >= PAGE_SIZE);
+
+                // Preserve scroll position after prepending
+                requestAnimationFrame(() => {
+                    if (container) {
+                        container.scrollTop = container.scrollHeight - prevScrollHeight;
+                    }
+                });
+            }
+        } catch (err) {
+            console.error('Exception in loadMoreMessages:', err);
+        } finally {
+            setLoadingMore(false);
+        }
+    };
+
+    const handleDeleteMessage = (messageId: string) => {
+        setDeleteModal({ isOpen: true, messageId });
+    };
+
+    const confirmDeleteMessage = async () => {
+        if (!deleteModal.messageId) return;
 
         const { error } = await supabase
             .from('chat_messages')
             .delete()
-            .eq('id', messageId);
+            .eq('id', deleteModal.messageId);
 
         if (error) {
             console.error("Error deleting message:", error);
-            alert("Failed to delete message");
+        } else {
+            // Optimistic removal in case realtime is slow
+            setMessages(prev => prev.filter(m => m.id !== deleteModal.messageId));
         }
+        setDeleteModal({ isOpen: false, messageId: null });
     };
 
     const handleSend = async (e: React.FormEvent) => {
@@ -475,7 +529,19 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
             )}
 
             {/* Messages Area */}
-            <div className={`flex-1 overflow-y-auto p-4 bg-slate-50 ${messages.length > 0 ? 'space-y-4' : ''}`}>
+            <div
+                ref={messagesContainerRef}
+                className={`flex-1 overflow-y-auto p-4 bg-slate-50 ${messages.length > 0 ? 'space-y-4' : ''}`}
+                onScroll={(e) => {
+                    const el = e.currentTarget;
+                    if (el.scrollTop < 50 && hasMore && !loadingMore) {
+                        loadMoreMessages();
+                    }
+                }}
+            >
+                {loadingMore && (
+                    <div className="flex justify-center py-2 text-slate-400 text-xs">Loading older messages...</div>
+                )}
                 {loading ? (
                     <div className="flex justify-center items-center h-full text-slate-400">Loading messages...</div>
                 ) : messages.length === 0 ? (
@@ -538,6 +604,32 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                     <Send size={20} />
                 </button>
             </form>
+
+            {/* Delete Confirmation Modal */}
+            {deleteModal.isOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 animate-in fade-in zoom-in duration-200">
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Message?</h3>
+                        <p className="text-gray-600 mb-6">
+                            Are you sure you want to delete this message? This cannot be undone.
+                        </p>
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => setDeleteModal({ isOpen: false, messageId: null })}
+                                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmDeleteMessage}
+                                className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg font-medium transition"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
