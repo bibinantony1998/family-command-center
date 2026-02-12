@@ -19,6 +19,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
     const [newMessage, setNewMessage] = useState('');
     const [loading, setLoading] = useState(true);
     const [transferProgress, setTransferProgress] = useState<number | null>(null);
+    const [transferError, setTransferError] = useState<string | null>(null);
     const [showOfflineTooltip, setShowOfflineTooltip] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -360,14 +361,16 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
         if (isRecipientOnline) {
             // Send directly via WebRTC
             setTransferProgress(0);
-            const success = await sendFileP2P(
+            setTransferError(null);
+            const result = await sendFileP2P(
                 file, file.name, fileType,
                 currentProfile.id, recipientId, familyId,
                 (p) => setTransferProgress(p)
             );
             setTransferProgress(null);
 
-            if (success) {
+            if (result.success) {
+                setTransferError(null);
                 // Insert metadata message into DB
                 const blobUrl = URL.createObjectURL(file);
                 const { data } = await supabase.from('chat_messages').insert({
@@ -385,7 +388,9 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                     setMessages(prev => [...prev, { ...data, attachment_blob_url: blobUrl, sender: currentProfile }]);
                 }
             } else {
-                alert('File transfer failed. The file has been queued for retry.');
+                const errMsg = result.error || 'File transfer failed';
+                setTransferError(errMsg);
+                console.error('[Attachment]', errMsg);
                 queueAttachment({
                     file, fileName: file.name, fileType,
                     recipientId, familyId, senderId: currentProfile.id
@@ -453,6 +458,13 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
     return (
         <div className="flex flex-col overflow-hidden bg-slate-50 h-[calc(100%-100px)]">
             {/* Transfer Progress Bar */}
+            {/* Debug: Transfer Error Banner */}
+            {transferError && (
+                <div className="bg-red-50 border-b border-red-200 px-4 py-2 text-xs text-red-700 flex items-center justify-between">
+                    <span>⚠️ Transfer Error: {transferError}</span>
+                    <button onClick={() => setTransferError(null)} className="text-red-400 hover:text-red-600 ml-2">✕</button>
+                </div>
+            )}
             {transferProgress !== null && (
                 <div className="bg-indigo-50 px-4 py-1 text-xs text-indigo-600 flex items-center gap-2">
                     <div className="flex-1 bg-indigo-100 rounded-full h-1.5">

@@ -367,23 +367,28 @@ export default function ChatScreen() {
     useEffect(() => {
         if (!recipientId || !family?.id || !user?.id) return;
 
-        const cleanup = listenForIncomingFiles(
-            user.id, family.id, recipientId,
-            async (metadata, blob) => {
-                const blobUrl = URL.createObjectURL(blob);
-                setMessages(prev => prev.map(m => {
-                    if (m.attachment_name === metadata.fileName &&
-                        m.sender_id === metadata.senderId &&
-                        !m.attachment_blob_url) {
-                        return { ...m, attachment_blob_url: blobUrl };
-                    }
-                    return m;
-                }));
-            },
-            (p) => setTransferProgress(p)
-        );
+        let cleanup: (() => void) | undefined;
+        try {
+            cleanup = listenForIncomingFiles(
+                user.id, family.id, recipientId,
+                async (metadata, blob) => {
+                    const blobUrl = URL.createObjectURL(blob);
+                    setMessages(prev => prev.map(m => {
+                        if (m.attachment_name === metadata.fileName &&
+                            m.sender_id === metadata.senderId &&
+                            !m.attachment_blob_url) {
+                            return { ...m, attachment_blob_url: blobUrl };
+                        }
+                        return m;
+                    }));
+                },
+                (p: number) => setTransferProgress(p)
+            );
+        } catch (err) {
+            console.warn('[WebRTC] listenForIncomingFiles failed (native module may not be linked):', err);
+        }
 
-        return cleanup;
+        return () => cleanup?.();
     }, [recipientId, family?.id, user?.id]);
 
     // Drain queue when recipient comes online

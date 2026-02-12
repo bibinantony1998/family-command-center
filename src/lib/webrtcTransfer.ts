@@ -10,6 +10,11 @@ const CHUNK_SIZE = 16384; // 16KB chunks
 const METERED_APP_NAME = import.meta.env.VITE_METERED_APP_NAME || '';
 const METERED_API_KEY = import.meta.env.VITE_METERED_API_KEY || '';
 
+const DEBUG = true;
+function log(...args: unknown[]) {
+    if (DEBUG) console.log('[WebRTC]', ...args);
+}
+
 interface FileMetadata {
     fileName: string;
     fileType: 'image' | 'video' | 'audio';
@@ -22,25 +27,31 @@ type TransferProgressCallback = (progress: number) => void;
 type FileReceivedCallback = (metadata: FileMetadata, blob: Blob) => void;
 
 async function fetchIceServers(): Promise<RTCIceServer[]> {
-    // Default STUN fallback
     const fallback: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
 
     if (!METERED_APP_NAME || !METERED_API_KEY) {
-        console.warn('[WebRTC] No Metered.ca credentials — using STUN only');
+        log('⚠️ No Metered.ca credentials — using STUN only');
         return fallback;
     }
 
     try {
+        log('Fetching TURN credentials from Metered.ca...');
         const res = await fetch(
             `https://${METERED_APP_NAME}.metered.live/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const servers = await res.json();
+        log('Got ICE servers:', servers.length, 'servers');
         return servers;
     } catch (err) {
-        console.error('[WebRTC] Failed to fetch TURN credentials, falling back to STUN:', err);
+        console.error('[WebRTC] Failed to fetch TURN credentials:', err);
         return fallback;
     }
+}
+
+/** Build the shared signaling channel name for a pair of users */
+function getSignalChannelName(familyId: string, userA: string, userB: string): string {
+    return `rtc:signal:${familyId}:${[userA, userB].sort().join(':')}`;
 }
 
 /**
@@ -55,16 +66,19 @@ export async function sendFileP2P(
     recipientId: string,
     familyId: string,
     onProgress?: TransferProgressCallback
-): Promise<boolean> {
+): Promise<{ success: boolean; error?: string }> {
     const transferId = crypto.randomUUID();
-    const channelName = `rtc:signal:${familyId}:${[senderId, recipientId].sort().join(':')}`;
+    const channelName = getSignalChannelName(familyId, senderId, recipientId);
+
+    log(`📤 SEND START — file="${fileName}" size=${file.size} to=${recipientId}`);
+    log(`   signalChannel="${channelName}" transferId=${transferId}`);
 
     const iceServers = await fetchIceServers();
     const pc = new RTCPeerConnection({ iceServers });
 
     const signalChannel = supabase.channel(channelName);
 
-    return new Promise<boolean>((resolve) => {
+    return new Promise<{ success: boolean; error?: string }>((resolve) => {
         const cleanup = () => {
             clearTimeout(timeoutHandle);
             pc.close();
@@ -72,27 +86,44 @@ export async function sendFileP2P(
         };
 
         const timeoutHandle = setTimeout(() => {
-            console.error('[WebRTC] Transfer timed out');
+            log('❌ Transfer TIMED OUT after 30s — no answer from recipient');
             cleanup();
-            resolve(false);
+            resolve({ success: false, error: 'Transfer timed out — recipient may not have the chat open' });
         }, 30000);
+
+        // Monitor connection state
+        pc.onconnectionstatechange = () => {
+            log(`🔗 Connection state: ${pc.connectionState}`);
+            if (pc.connectionState === 'failed') {
+                log('❌ Connection FAILED');
+                cleanup();
+                resolve({ success: false, error: 'WebRTC connection failed — try again' });
+            }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            log(`🧊 ICE state: ${pc.iceConnectionState}`);
+        };
+
+        pc.onicegatheringstatechange = () => {
+            log(`🧊 ICE gathering: ${pc.iceGatheringState}`);
+        };
 
         const dataChannel = pc.createDataChannel('fileTransfer', { ordered: true });
 
         dataChannel.onopen = async () => {
-            // Send metadata first
+            log('📡 DataChannel OPEN — sending file...');
+
             const metadata: FileMetadata = { fileName, fileType, fileSize: file.size, senderId, transferId };
             dataChannel.send(JSON.stringify({ type: 'metadata', data: metadata }));
 
-            // Send file in chunks
-            const arrayBuffer = await (file instanceof File ? file.arrayBuffer() : file.arrayBuffer());
+            const arrayBuffer = await file.arrayBuffer();
             const totalChunks = Math.ceil(arrayBuffer.byteLength / CHUNK_SIZE);
             let sentChunks = 0;
 
             for (let offset = 0; offset < arrayBuffer.byteLength; offset += CHUNK_SIZE) {
                 const chunk = arrayBuffer.slice(offset, offset + CHUNK_SIZE);
 
-                // Wait for buffer to drain if needed
                 while (dataChannel.bufferedAmount > CHUNK_SIZE * 8) {
                     await new Promise(r => setTimeout(r, 10));
                 }
@@ -102,7 +133,7 @@ export async function sendFileP2P(
                 onProgress?.(sentChunks / totalChunks);
             }
 
-            // Signal end of file
+            log(`✅ All ${totalChunks} chunks sent, waiting for ACK...`);
             dataChannel.send(JSON.stringify({ type: 'done', transferId }));
         };
 
@@ -110,21 +141,23 @@ export async function sendFileP2P(
             try {
                 const msg = JSON.parse(event.data);
                 if (msg.type === 'ack' && msg.transferId === transferId) {
+                    log('✅ Got ACK — transfer COMPLETE');
                     cleanup();
-                    resolve(true);
+                    resolve({ success: true });
                 }
             } catch { /* binary data, ignore */ }
         };
 
         dataChannel.onerror = (err) => {
-            console.error('[WebRTC] DataChannel error:', err);
+            log('❌ DataChannel error:', err);
             cleanup();
-            resolve(false);
+            resolve({ success: false, error: 'DataChannel error' });
         };
 
         // ICE candidates
         pc.onicecandidate = (event) => {
             if (event.candidate) {
+                log('🧊 Sending ICE candidate');
                 signalChannel.send({
                     type: 'broadcast',
                     event: 'signal',
@@ -139,15 +172,20 @@ export async function sendFileP2P(
                 const msg = payload.payload;
                 if (msg.from === senderId) return; // Ignore own messages
 
+                log(`📨 Signal received: type=${msg.type} from=${msg.from}`);
+
                 if (msg.type === 'answer' && msg.transferId === transferId) {
+                    log('📨 Got ANSWER — setting remote description');
                     await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp as RTCSessionDescriptionInit));
                 } else if (msg.type === 'ice-candidate' && msg.transferId === transferId) {
+                    log('📨 Got remote ICE candidate');
                     await pc.addIceCandidate(new RTCIceCandidate(msg.candidate as RTCIceCandidateInit));
                 }
             })
             .subscribe(async (status) => {
+                log(`📡 Signal channel status: ${status}`);
                 if (status === 'SUBSCRIBED') {
-                    // Create and send offer
+                    log('📡 Creating and sending OFFER...');
                     const offer = await pc.createOffer();
                     await pc.setLocalDescription(offer);
 
@@ -162,6 +200,7 @@ export async function sendFileP2P(
                             metadata: { fileName, fileType, fileSize: file.size },
                         },
                     });
+                    log('📡 OFFER sent — waiting for recipient to answer...');
                 }
             });
     });
@@ -178,8 +217,12 @@ export function listenForIncomingFiles(
     onFileReceived: FileReceivedCallback,
     onProgress?: TransferProgressCallback
 ): () => void {
-    const channelName = `rtc:signal:${familyId}:${[userId, counterpartId].sort().join(':')}`;
-    const signalChannel = supabase.channel(channelName + ':recv');
+    const channelName = getSignalChannelName(familyId, userId, counterpartId);
+
+    log(`👂 LISTEN start — userId=${userId} counterpart=${counterpartId}`);
+    log(`   signalChannel="${channelName}"`);
+
+    const signalChannel = supabase.channel(channelName);
 
     signalChannel
         .on('broadcast', { event: 'signal' }, async (payload: { payload: Record<string, unknown> }) => {
@@ -187,14 +230,25 @@ export function listenForIncomingFiles(
             if (msg.from === userId) return; // Ignore own
             if (msg.type !== 'offer') return;
 
+            log(`📨 RECV got OFFER from ${msg.from}, transferId=${msg.transferId}`);
+
             const iceServers = await fetchIceServers();
             const pc = new RTCPeerConnection({ iceServers });
 
             const receivedChunks: ArrayBuffer[] = [];
             let metadata: FileMetadata | null = null;
 
+            pc.onconnectionstatechange = () => {
+                log(`🔗 RECV connection state: ${pc.connectionState}`);
+            };
+
+            pc.oniceconnectionstatechange = () => {
+                log(`🧊 RECV ICE state: ${pc.iceConnectionState}`);
+            };
+
             pc.ondatachannel = (event) => {
                 const dc = event.channel;
+                log('📡 RECV DataChannel opened');
 
                 dc.onmessage = (msgEvent) => {
                     if (typeof msgEvent.data === 'string') {
@@ -202,22 +256,22 @@ export function listenForIncomingFiles(
                             const parsed = JSON.parse(msgEvent.data);
                             if (parsed.type === 'metadata') {
                                 metadata = parsed.data;
+                                log(`📦 RECV metadata: file="${metadata!.fileName}" size=${metadata!.fileSize}`);
                             } else if (parsed.type === 'done' && metadata) {
+                                log(`✅ RECV all chunks (${receivedChunks.length}), building blob...`);
                                 const blob = new Blob(receivedChunks);
                                 onFileReceived(metadata, blob);
 
-                                // Send ack
                                 dc.send(JSON.stringify({ type: 'ack', transferId: parsed.transferId }));
+                                log('✅ RECV sent ACK');
 
-                                // Cleanup after ack sent
                                 setTimeout(() => {
                                     dc.close();
                                     pc.close();
                                 }, 500);
                             }
-                        } catch { /* Not JSON, ignore */ }
+                        } catch { /* Not JSON */ }
                     } else {
-                        // Binary chunk
                         receivedChunks.push(msgEvent.data);
                         if (metadata && onProgress) {
                             const received = receivedChunks.reduce((sum, c) => sum + c.byteLength, 0);
@@ -230,6 +284,7 @@ export function listenForIncomingFiles(
             // ICE candidates
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
+                    log('🧊 RECV sending ICE candidate');
                     signalChannel.send({
                         type: 'broadcast',
                         event: 'signal',
@@ -243,17 +298,19 @@ export function listenForIncomingFiles(
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
 
+            log('📨 RECV sending ANSWER');
             signalChannel.send({
                 type: 'broadcast',
                 event: 'signal',
                 payload: { type: 'answer', sdp: answer, from: userId, transferId: msg.transferId },
             });
-
-            // Handle ice candidates from sender
         })
-        .subscribe();
+        .subscribe((status) => {
+            log(`👂 RECV signal channel status: ${status}`);
+        });
 
     return () => {
+        log('👂 LISTEN cleanup');
         supabase.removeChannel(signalChannel);
     };
 }
