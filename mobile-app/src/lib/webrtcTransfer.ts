@@ -374,112 +374,160 @@ export function listenForIncomingFiles(
 
             log(`📨 RECV got OFFER from ${msg.from}, transferId=${msg.transferId}`);
 
-            const iceServers = await fetchIceServers();
-            const pc = new RTCPeerConnection({ iceServers });
-            transfers.set(msg.transferId, pc);
+            try {
+                const iceServers = await fetchIceServers();
+                const pc = new RTCPeerConnection({ iceServers });
+                transfers.set(msg.transferId, pc);
 
-            // Process buffered candidates
-            if (pendingCandidates.has(msg.transferId)) {
-                const buffered = pendingCandidates.get(msg.transferId)!;
-                log(`Processing ${buffered.length} buffered candidates for ${msg.transferId}`);
-                for (const candidate of buffered) {
-                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
-                }
-                pendingCandidates.delete(msg.transferId);
-            }
-
-            const receivedChunks: ArrayBuffer[] = [];
-            let metadata: FileMetadata | null = null;
-            let cleanupCalled = false;
-
-            const shared = channelCache.get(channelName);
-            if (!shared) {
-                console.error('Channel lost during incoming offer');
-                transfers.delete(msg.transferId);
-                return;
-            }
-            const signalChannel = shared.channel;
-
-            // Helper to cleanup
-            const endTransfer = () => {
-                if (cleanupCalled) return;
-                cleanupCalled = true;
-                transfers.delete(msg.transferId);
-                setTimeout(() => {
-                    try { dc?.close(); } catch { /* ignore */ }
-                    try { pc.close(); } catch { /* ignore */ }
-                }, 1000);
-            };
-
-            let dc: any = null;
-
-            pc.ondatachannel = (event: any) => {
-                const dc = event.channel;
-                dc.onmessage = (msgEvent: any) => {
-                    if (typeof msgEvent.data === 'string') {
+                // Process buffered candidates
+                if (pendingCandidates.has(msg.transferId)) {
+                    const buffered = pendingCandidates.get(msg.transferId)!;
+                    log(`Processing ${buffered.length} buffered candidates for ${msg.transferId}`);
+                    for (const candidate of buffered) {
                         try {
-                            const parsed = JSON.parse(msgEvent.data);
-                            if (parsed.type === 'metadata') {
-                                metadata = parsed.data;
-                                log(`📦 RECV metadata: size=${metadata!.fileSize}`);
-                            } else if (parsed.type === 'done' && metadata) {
-                                // Write to file instead of Blob
-                                const ReactNativeBlobUtil = require('react-native-blob-util').default;
-                                const { Buffer } = require('buffer');
-                                const dirs = ReactNativeBlobUtil.fs.dirs;
-                                const filePath = `${dirs.CacheDir}/${metadata.fileName}`;
+                            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                        } catch (e) {
+                            console.warn(`Failed to add buffered candidate:`, e);
+                        }
+                    }
+                    pendingCandidates.delete(msg.transferId);
+                }
 
-                                // Combine chunks and write
-                                const combinedBuffer = Buffer.concat(receivedChunks.map(ab => Buffer.from(ab)));
-                                const base64 = combinedBuffer.toString('base64');
+                const receivedChunks: ArrayBuffer[] = [];
+                let metadata: FileMetadata | null = null;
+                let cleanupCalled = false;
 
-                                ReactNativeBlobUtil.fs.writeFile(filePath, base64, 'base64')
-                                    .then(() => {
-                                        log(`💾 File saved to: ${filePath}`);
-                                        const fileUri = `file://${filePath}`;
-                                        if (metadata) {
-                                            onFileReceived(metadata, fileUri as any);
-                                        }
+                const shared = channelCache.get(channelName);
+                if (!shared) {
+                    console.error('Channel lost during incoming offer');
+                    transfers.delete(msg.transferId);
+                    return;
+                }
+                const signalChannel = shared.channel;
+
+                // Helper to cleanup
+                const endTransfer = () => {
+                    if (cleanupCalled) return;
+                    cleanupCalled = true;
+                    transfers.delete(msg.transferId);
+                    setTimeout(() => {
+                        try { dc?.close(); } catch { /* ignore */ }
+                        try { pc.close(); } catch { /* ignore */ }
+                    }, 1000);
+                };
+
+                let dc: any = null;
+
+                pc.ondatachannel = (event: any) => {
+                    const dc = event.channel;
+                    log(`Rx DataChannel open: ${dc.label}`);
+
+                    dc.onopen = () => log('DataChannel OPEN on receiver side');
+                    dc.onerror = (err: any) => console.error('DataChannel ERROR:', err);
+
+                    dc.onmessage = (msgEvent: any) => {
+                        if (typeof msgEvent.data === 'string') {
+                            try {
+                                const parsed = JSON.parse(msgEvent.data);
+                                if (parsed.type === 'metadata') {
+                                    metadata = parsed.data;
+                                    log(`📦 RECV metadata: size=${metadata!.fileSize}`);
+                                } else if (parsed.type === 'done' && metadata) {
+                                    log('✅ RECV DONE signal. Writing file...');
+
+                                    // Write to file instead of Blob
+                                    const ReactNativeBlobUtil = require('react-native-blob-util').default;
+                                    const { Buffer } = require('buffer');
+                                    const dirs = ReactNativeBlobUtil.fs.dirs;
+                                    const filePath = `${dirs.CacheDir}/${metadata.fileName}`;
+
+                                    // Combine chunks and write
+                                    // Note: Buffer.concat can be memory intensive for large files on mobile
+                                    try {
+                                        const combinedBuffer = Buffer.concat(receivedChunks.map(ab => Buffer.from(ab)));
+                                        const base64 = combinedBuffer.toString('base64');
+
+                                        ReactNativeBlobUtil.fs.writeFile(filePath, base64, 'base64')
+                                            .then(() => {
+                                                log(`💾 File saved to: ${filePath}`);
+                                                const fileUri = `file://${filePath}`;
+                                                if (metadata) {
+                                                    onFileReceived(metadata, fileUri as any);
+                                                }
+
+                                                try {
+                                                    dc.send(JSON.stringify({ type: 'ack', transferId: parsed.transferId }));
+                                                    log('Sent ACK');
+                                                } catch (e) {
+                                                    console.warn('Failed to send ACK:', e);
+                                                }
+
+                                                endTransfer();
+                                            })
+                                            .catch((err: any) => {
+                                                console.error('File write error:', err);
+                                                endTransfer();
+                                            });
+                                    } catch (err) {
+                                        console.error('Error combining/writing chunks:', err);
                                         endTransfer();
-                                    })
-                                    .catch((err: any) => {
-                                        console.error('File write error:', err);
-                                        endTransfer();
-                                    });
-
-                                dc.send(JSON.stringify({ type: 'ack', transferId: parsed.transferId }));
-                                log('✅ RECV sent ACK');
+                                    }
+                                }
+                            } catch { /* ignore */ }
+                        } else {
+                            receivedChunks.push(msgEvent.data);
+                            if (metadata && onProgress) {
+                                const received = receivedChunks.reduce((sum: number, c: ArrayBuffer) => sum + c.byteLength, 0);
+                                onProgress(received / metadata.fileSize);
                             }
-                        } catch { /* ignore */ }
-                    } else {
-                        receivedChunks.push(msgEvent.data);
-                        if (metadata && onProgress) {
-                            const received = receivedChunks.reduce((sum: number, c: ArrayBuffer) => sum + c.byteLength, 0);
-                            onProgress(received / metadata.fileSize);
+                        }
+                    };
+                };
+
+                pc.onicecandidate = (event: any) => {
+                    if (event.candidate) {
+                        try {
+                            log(`❄️ SEND ICE candidate (${event.candidate.type})`);
+                            signalChannel.send({
+                                type: 'broadcast',
+                                event: 'signal',
+                                payload: { type: 'ice-candidate', candidate: event.candidate, from: userId, transferId: msg.transferId },
+                            }).catch(e => console.warn('Failed to send ICE:', e));
+                        } catch (e) {
+                            console.warn('Error handling ICE candidate:', e);
                         }
                     }
                 };
-            };
 
-            pc.onicecandidate = (event: any) => {
-                if (event.candidate) {
-                    signalChannel.send({
-                        type: 'broadcast',
-                        event: 'signal',
-                        payload: { type: 'ice-candidate', candidate: event.candidate, from: userId, transferId: msg.transferId },
-                    });
-                }
-            };
+                pc.onconnectionstatechange = () => {
+                    log(`Connection state: ${pc.connectionState}`);
+                    if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                        endTransfer();
+                    }
+                };
 
-            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
+                log(`Setting Remote Description...`);
+                await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
 
-            signalChannel.send({
-                type: 'broadcast',
-                event: 'signal',
-                payload: { type: 'answer', sdp: answer, from: userId, transferId: msg.transferId },
-            });
+                log(`Creating Answer...`);
+                const answer = await pc.createAnswer();
+
+                log(`Setting Local Description...`);
+                await pc.setLocalDescription(answer);
+
+                log(`Sending ANSWER...`);
+                await signalChannel.send({
+                    type: 'broadcast',
+                    event: 'signal',
+                    payload: { type: 'answer', sdp: answer, from: userId, transferId: msg.transferId },
+                });
+                log(`✅ ANSWER sent for ${msg.transferId}`);
+
+            } catch (err) {
+                console.error('❌ Error handling OFFER logic:', err);
+                // Clean up if we failed during setup
+                transfers.delete(msg.transferId);
+            }
         } catch (err) {
             console.error('❌ Error in onSignal (Mobile Receiver):', err);
         }
