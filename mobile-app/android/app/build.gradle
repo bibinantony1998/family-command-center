@@ -83,8 +83,8 @@ android {
         applicationId "com.familycommandcenter"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 18
-        versionName "1.17"
+        versionCode 19
+        versionName "1.18"
     }
     buildFeatures {
         prefab true
