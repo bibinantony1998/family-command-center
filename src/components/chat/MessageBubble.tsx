@@ -78,12 +78,14 @@ export function MessageBubble({ message, isOwn, onDelete }: MessageBubbleProps) 
                         href={message.attachment_blob_url!}
                         download={message.attachment_name || 'download'}
                         className={cn(
-                            "flex items-center gap-0.5 shrink-0 hover:underline",
-                            isOwn ? "text-indigo-200 hover:text-white" : "text-indigo-500 hover:text-indigo-700"
+                            "flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-semibold transition-all w-full mt-2 shadow-sm active:scale-95",
+                            isOwn
+                                ? "bg-white/20 text-white hover:bg-white/30 border border-white/10"
+                                : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100"
                         )}
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <Download size={12} /> Save
+                        <Download size={14} /> Save to Device
                     </a>
                 </div>
             </div>

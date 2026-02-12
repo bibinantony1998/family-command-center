@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Keyboard, Modal, Image } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { ChatMessage } from '../../types/schema';
@@ -32,6 +32,7 @@ export default function ChatScreen() {
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [transferProgress, setTransferProgress] = useState<number | null>(null);
+    const [pendingAttachment, setPendingAttachment] = useState<{ uri: string; fileName: string; fileType: 'image' | 'video' | 'audio'; fileSize: number } | null>(null);
     const flatListRef = useRef<FlatList>(null);
     const PAGE_SIZE = 20;
 
@@ -376,10 +377,25 @@ export default function ChatScreen() {
 
         const fileSize = asset.fileSize || 0;
 
+        // Show confirmation modal instead of sending immediately
+        setPendingAttachment({
+            uri: asset.uri,
+            fileName: asset.fileName,
+            fileType,
+            fileSize
+        });
+    }, [recipientId, user?.id, family?.id]);
+
+    const confirmSend = async () => {
+        if (!pendingAttachment || !recipientId || !user?.id || !family?.id) return;
+
+        const { uri, fileName, fileType, fileSize } = pendingAttachment;
+        setPendingAttachment(null); // Close modal
+
         if (isRecipientOnline) {
             setTransferProgress(0);
             const success = await sendFileP2P(
-                asset.uri, asset.fileName, fileType, fileSize,
+                uri, fileName, fileType, fileSize,
                 user.id, recipientId, family.id,
                 (p: number) => setTransferProgress(p)
             );
@@ -391,9 +407,9 @@ export default function ChatScreen() {
                     family_id: family.id,
                     sender_id: user.id,
                     recipient_id: recipientId,
-                    content: `📎 ${fileType.charAt(0).toUpperCase() + fileType.slice(1)}: ${asset.fileName}`,
+                    content: `📎 ${fileType.charAt(0).toUpperCase() + fileType.slice(1)}: ${fileName}`,
                     attachment_type: fileType,
-                    attachment_name: asset.fileName,
+                    attachment_name: fileName,
                     attachment_size: fileSize,
                     read_by: [user.id]
                 }).select().single();
@@ -401,25 +417,26 @@ export default function ChatScreen() {
                 // Optimistically update local state with the local URI so it renders immediately
                 if (data) {
                     setMessages(prev => [
-                        { ...data, attachment_blob_url: asset.uri, sender: { display_name: 'Me', avatar_url: null } },
-                        ...prev
+                        ...prev,
+                        { ...data, attachment_blob_url: uri, sender: { display_name: 'Me', avatar_url: null } },
                     ]);
                 }
             } else {
                 Alert.alert('Transfer Failed', 'File queued for when recipient comes online.');
                 queueAttachment({
-                    fileUri: asset.uri, fileName: asset.fileName, fileType,
+                    fileUri: uri, fileName: fileName, fileType,
                     fileSize, recipientId, familyId: family.id, senderId: user.id
                 });
             }
         } else {
+            // Offline queue logic
             queueAttachment({
-                fileUri: asset.uri, fileName: asset.fileName, fileType,
+                fileUri: uri, fileName: fileName, fileType,
                 fileSize, recipientId, familyId: family.id, senderId: user.id
             });
             Alert.alert('Offline', 'Recipient is offline. File queued for auto-send.');
         }
-    }, [recipientId, isRecipientOnline, family?.id, user?.id]);
+    };
 
     // Listen for incoming files via WebRTC
     useEffect(() => {
@@ -590,6 +607,66 @@ export default function ChatScreen() {
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
+
+            {/* Confirmation Modal */}
+            <Modal
+                visible={!!pendingAttachment}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setPendingAttachment(null)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Send to {name}?</Text>
+
+                        {pendingAttachment?.fileType === 'image' && (
+                            <Image
+                                source={{ uri: pendingAttachment.uri }}
+                                style={{ width: '100%', height: 180, borderRadius: 12, marginBottom: 12, backgroundColor: '#f1f5f9' }}
+                                resizeMode="cover"
+                            />
+                        )}
+
+                        <Text style={styles.modalText} numberOfLines={1}>
+                            {pendingAttachment?.fileName}
+                        </Text>
+                        {pendingAttachment?.fileSize ? (
+                            <Text style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>
+                                {Math.round(pendingAttachment.fileSize / 1024)} KB
+                            </Text>
+                        ) : null}
+
+                        <View style={styles.modalWarning}>
+                            <Text style={styles.modalWarningText}>
+                                ⚠️ Recipient must be ONLINE for direct transfer.
+                            </Text>
+                        </View>
+
+                        <Text style={[styles.modalText, { fontSize: 13, marginBottom: 24 }]}>
+                            {isRecipientOnline
+                                ? "✅ Recipient is online. Ready to send."
+                                : "☁️ Recipient is OFFLINE. File will be queued."}
+                        </Text>
+
+                        <View style={styles.modalButtons}>
+                            <TouchableOpacity
+                                style={[styles.modalBtn, styles.cancelBtn]}
+                                onPress={() => setPendingAttachment(null)}
+                            >
+                                <Text style={styles.cancelBtnText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.modalBtn, styles.confirmBtn]}
+                                onPress={confirmSend}
+                            >
+                                <Text style={styles.confirmBtnText}>
+                                    {isRecipientOnline ? "Send Now" : "Queue Send"}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -598,6 +675,80 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#fff',
+    },
+    // Modal Styles
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    modalContent: {
+        backgroundColor: 'white',
+        borderRadius: 20,
+        padding: 24,
+        width: '100%',
+        maxWidth: 340,
+        alignItems: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        elevation: 5,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#1e293b',
+        marginBottom: 8,
+    },
+    modalText: {
+        fontSize: 14,
+        color: '#64748b',
+        textAlign: 'center',
+        marginBottom: 20,
+        lineHeight: 20,
+    },
+    modalWarning: {
+        backgroundColor: '#fff7ed',
+        padding: 12,
+        borderRadius: 8,
+        width: '100%',
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: '#ffedd5',
+    },
+    modalWarningText: {
+        fontSize: 13,
+        color: '#c2410c',
+        textAlign: 'center',
+        fontWeight: '500',
+    },
+    modalButtons: {
+        flexDirection: 'row',
+        width: '100%',
+        gap: 12,
+    },
+    modalBtn: {
+        flex: 1,
+        paddingVertical: 12,
+        borderRadius: 12,
+        alignItems: 'center',
+    },
+    cancelBtn: {
+        backgroundColor: '#f1f5f9',
+    },
+    confirmBtn: {
+        backgroundColor: '#6366f1',
+    },
+    cancelBtnText: {
+        color: '#64748b',
+        fontWeight: '600',
+    },
+    confirmBtnText: {
+        color: 'white',
+        fontWeight: '600',
     },
     header: {
         flexDirection: 'row',

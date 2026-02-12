@@ -76,13 +76,17 @@ export const MessageBubble = ({ message, isOwn, showSenderName, onLongPress }: M
                         {message.attachment_name}
                         {message.attachment_size ? ` (${formatFileSize(message.attachment_size)})` : ''}
                     </Text>
-                    <TouchableOpacity
-                        onPress={() => Linking.openURL(message.attachment_blob_url!)}
-                        style={attachStyles.downloadBtn}
-                    >
-                        <Download size={14} color={isOwn ? 'rgba(255,255,255,0.8)' : '#6366f1'} />
-                    </TouchableOpacity>
                 </View>
+
+                <TouchableOpacity
+                    onPress={() => Linking.openURL(message.attachment_blob_url!)}
+                    style={[attachStyles.downloadBtn, isOwn ? attachStyles.ownDownloadBtn : attachStyles.otherDownloadBtn]}
+                >
+                    <Download size={16} color={isOwn ? '#fff' : '#6366f1'} />
+                    <Text style={[attachStyles.downloadText, isOwn ? { color: '#fff' } : { color: '#6366f1' }]}>
+                        Save to Gallery
+                    </Text>
+                </TouchableOpacity>
             </View>
         );
     };
@@ -271,6 +275,23 @@ const attachStyles = StyleSheet.create({
         marginRight: 8,
     },
     downloadBtn: {
-        padding: 4,
+        marginTop: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 8,
+        gap: 6,
+    },
+    ownDownloadBtn: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
+    },
+    otherDownloadBtn: {
+        backgroundColor: '#e0e7ff',
+    },
+    downloadText: {
+        fontSize: 12,
+        fontWeight: '600',
     },
 });

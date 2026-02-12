@@ -23,6 +23,8 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
     const [transferProgress, setTransferProgress] = useState<number | null>(null);
     const [transferError, setTransferError] = useState<string | null>(null);
     const [showOfflineTooltip, setShowOfflineTooltip] = useState(false);
+    const [pendingAttachment, setPendingAttachment] = useState<{ file: File; fileName: string; fileType: 'image' | 'video' | 'audio' } | null>(null);
+    const [recipientProfile, setRecipientProfile] = useState<Profile | null>(null);
     const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; messageId: string | null }>({ isOpen: false, messageId: null });
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -158,6 +160,21 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
             }
         };
 
+
+
+        const fetchRecipientProfile = async () => {
+            if (!recipientId) {
+                setRecipientProfile(null);
+                return;
+            }
+            const { data } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', recipientId)
+                .single();
+            if (data) setRecipientProfile(data as Profile);
+        };
+
         const initEncryptionAndFetch = async () => {
             await KeyManager.initialize(currentProfile.id);
 
@@ -176,7 +193,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                 deviceKeyMapRef.current = map;
             }
 
-            await fetchMessages();
+            await Promise.all([fetchMessages(), fetchRecipientProfile()]);
         };
         initEncryptionAndFetch();
 
@@ -412,12 +429,26 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
             return;
         }
 
+        // Show confirmation modal instead of sending immediately
+        setPendingAttachment({
+            file,
+            fileName: file.name,
+            fileType
+        });
+    }, [recipientId]);
+
+    const confirmSend = async () => {
+        if (!pendingAttachment || !recipientId) return;
+
+        const { file, fileName, fileType } = pendingAttachment;
+        setPendingAttachment(null); // Close modal
+
         if (isRecipientOnline) {
             // Send directly via WebRTC
             setTransferProgress(0);
             setTransferError(null);
             const result = await sendFileP2P(
-                file, file.name, fileType,
+                file, fileName, fileType,
                 currentProfile.id, recipientId, familyId,
                 (p) => setTransferProgress(p)
             );
@@ -431,9 +462,9 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                     family_id: familyId,
                     sender_id: currentProfile.id,
                     recipient_id: recipientId,
-                    content: `📎 ${fileType.charAt(0).toUpperCase() + fileType.slice(1)}: ${file.name}`,
+                    content: `📎 ${fileType.charAt(0).toUpperCase() + fileType.slice(1)}: ${fileName}`,
                     attachment_type: fileType,
-                    attachment_name: file.name,
+                    attachment_name: fileName,
                     attachment_size: file.size,
                     read_by: [currentProfile.id]
                 }).select().single();
@@ -446,20 +477,20 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                 setTransferError(errMsg);
                 console.error('[Attachment]', errMsg);
                 queueAttachment({
-                    file, fileName: file.name, fileType,
+                    file, fileName: fileName, fileType,
                     recipientId, familyId, senderId: currentProfile.id
                 });
             }
         } else {
             // Queue for later
             queueAttachment({
-                file, fileName: file.name, fileType,
+                file, fileName: fileName, fileType,
                 recipientId, familyId, senderId: currentProfile.id
             });
             setShowOfflineTooltip(true);
             setTimeout(() => setShowOfflineTooltip(false), 3000);
         }
-    }, [recipientId, isRecipientOnline, familyId, currentProfile]);
+    };
 
     // Listen for incoming files via WebRTC
     useEffect(() => {
@@ -673,6 +704,68 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                     </div>
                 </div>
             )}
+
+            {/* Attachment Confirmation Modal */}
+            {pendingAttachment && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 animate-in fade-in zoom-in duration-200">
+                        <h3 className="text-lg font-bold text-gray-900 mb-4 text-center">
+                            Send to {recipientProfile?.display_name || 'Recipient'}?
+                        </h3>
+
+                        {pendingAttachment.fileType === 'image' && (
+                            <div className="mb-4 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 h-48 flex items-center justify-center">
+                                <img
+                                    src={URL.createObjectURL(pendingAttachment.file)}
+                                    alt="Preview"
+                                    className="w-full h-full object-cover"
+                                />
+                            </div>
+                        )}
+
+                        <p className="text-gray-600 mb-2 truncate text-sm font-medium text-center">
+                            {pendingAttachment.fileName}
+                        </p>
+                        <p className="text-slate-400 text-xs text-center mb-6">
+                            {formatFileSize(pendingAttachment.file.size)}
+                        </p>
+
+                        <div className="bg-orange-50 border border-orange-100 rounded-lg p-3 mb-4">
+                            <p className="text-orange-700 text-xs font-medium text-center">
+                                ⚠️ Recipient must be ONLINE for direct transfer.
+                            </p>
+                        </div>
+
+                        <p className="text-sm text-center mb-6 font-medium">
+                            {isRecipientOnline
+                                ? <span className="text-green-600">✅ Recipient is online. Ready to send.</span>
+                                : <span className="text-slate-500">☁️ Recipient is OFFLINE. File will be queued.</span>
+                            }
+                        </p>
+
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => setPendingAttachment(null)}
+                                className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmSend}
+                                className="flex-1 px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg font-medium transition shadow-sm"
+                            >
+                                {isRecipientOnline ? "Send Now" : "Queue Send"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
+}
+
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
