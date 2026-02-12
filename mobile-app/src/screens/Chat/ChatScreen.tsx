@@ -32,6 +32,7 @@ export default function ChatScreen() {
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [transferProgress, setTransferProgress] = useState<number | null>(null);
+    const [transferStatus, setTransferStatus] = useState<'idle' | 'sending' | 'receiving'>('idle');
     const [pendingAttachment, setPendingAttachment] = useState<{ uri: string; fileName: string; fileType: 'image' | 'video' | 'audio'; fileSize?: number } | null>(null);
     const [queuedFiles, setQueuedFiles] = useState(getQueuedAttachments(recipientId || ''));
     const [showQueueModal, setShowQueueModal] = useState(false);
@@ -412,6 +413,7 @@ export default function ChatScreen() {
             abortController.current = null;
         }
         setTransferProgress(null);
+        setTransferStatus('idle');
     };
 
     const confirmSend = async () => {
@@ -424,6 +426,7 @@ export default function ChatScreen() {
             abortController.current = ac;
 
             setSending(true);
+            setTransferStatus('sending');
             setTransferProgress(0);
 
             try {
@@ -468,6 +471,7 @@ export default function ChatScreen() {
             } finally {
                 setSending(false);
                 setTransferProgress(null);
+                setTransferStatus('idle');
                 abortController.current = null;
             }
         } else {
@@ -530,7 +534,16 @@ export default function ChatScreen() {
                     };
                     reader.readAsDataURL(blob);
                 },
-                (p) => setTransferProgress(p)
+                (p) => {
+                    setTransferStatus(prev => prev !== 'receiving' ? 'receiving' : prev);
+                    setTransferProgress(p);
+                    if (p === 1) {
+                        setTimeout(() => {
+                            setTransferProgress(null);
+                            setTransferStatus('idle');
+                        }, 1000);
+                    }
+                }
             );
         } catch (err) {
             console.error('Failed to start WebRTC listener:', err);
@@ -538,6 +551,7 @@ export default function ChatScreen() {
 
         return () => {
             if (cleanup) cleanup();
+            setTransferStatus('idle');
         };
     }, [recipientId, family?.id, user?.id]);
 
@@ -636,6 +650,9 @@ export default function ChatScreen() {
                     )}
                     {transferProgress !== null && (
                         <View style={styles.uploadContainer}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#6366f1', marginRight: 8, textTransform: 'uppercase' }}>
+                                {transferStatus === 'sending' ? 'Sending...' : 'Receiving...'}
+                            </Text>
                             <View style={styles.uploadProgressTrack}>
                                 <View style={[styles.uploadProgressBar, { width: `${Math.round(transferProgress * 100)}%` }]} />
                             </View>

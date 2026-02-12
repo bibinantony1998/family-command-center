@@ -21,6 +21,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [transferProgress, setTransferProgress] = useState<number | null>(null);
+    const [transferStatus, setTransferStatus] = useState<'idle' | 'sending' | 'receiving'>('idle');
     const [transferError, setTransferError] = useState<string | null>(null);
     const [pendingAttachment, setPendingAttachment] = useState<{ file: File; fileName: string; fileType: 'image' | 'video' | 'audio' } | null>(null);
     const [queuedFiles, setQueuedFiles] = useState(getQueuedAttachments(recipientId || ''));
@@ -458,6 +459,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
             abortController.current = null;
         }
         setTransferProgress(null);
+        setTransferStatus('idle');
     };
 
     const confirmSend = async () => {
@@ -469,6 +471,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
             const ac = new AbortController();
             abortController.current = ac;
 
+            setTransferStatus('sending');
             setTransferProgress(0);
             setTransferError(null);
 
@@ -480,6 +483,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
             );
 
             setTransferProgress(null);
+            setTransferStatus('idle');
             abortController.current = null;
 
             if (success) {
@@ -577,10 +581,22 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                 // Try immediately once
                 tryAttach();
             },
-            (p) => setTransferProgress(p)
+            (p) => {
+                setTransferStatus(prev => prev !== 'receiving' ? 'receiving' : prev);
+                setTransferProgress(p);
+                if (p === 1) {
+                    setTimeout(() => {
+                        setTransferProgress(null);
+                        setTransferStatus('idle');
+                    }, 1000);
+                }
+            }
         );
 
-        return cleanup;
+        return () => {
+            cleanup();
+            setTransferStatus('idle');
+        };
     }, [recipientId, familyId, currentProfile.id]);
 
     // Drain queue when recipient comes online
@@ -653,10 +669,13 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
             {/* Input Area */}
             {transferProgress !== null && (
                 <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 border-t border-slate-200">
+                    <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wider w-20">
+                        {transferStatus === 'sending' ? 'Sending...' : 'Receiving...'}
+                    </span>
                     <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                         <div
                             className="h-full bg-indigo-500 transition-all duration-300 ease-out"
-                            style={{ width: `${Math.round(transferProgress * 100)}% ` }}
+                            style={{ width: `${Math.round(transferProgress * 100)}%` }}
                         />
                     </div>
                     <span className="text-xs font-medium text-slate-500 w-8 text-right">

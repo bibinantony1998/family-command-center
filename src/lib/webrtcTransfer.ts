@@ -181,17 +181,31 @@ export async function sendFileP2P(
             });
         }
 
-        const timeoutHandle = setTimeout(() => {
-            log('❌ Transfer TIMED OUT after 30s');
+        let timeoutHandle: ReturnType<typeof setTimeout>;
+
+        const resetTimeout = () => {
+            clearTimeout(timeoutHandle);
+            timeoutHandle = setTimeout(() => {
+                log('❌ Transfer TIMED OUT due to inactivity');
+                cleanup();
+                resolve({ success: false, error: 'Transfer timed out (stalled)' });
+            }, 10000); // 10s inactivity timeout
+        };
+
+        // Initial setup timeout (longer for handshake)
+        timeoutHandle = setTimeout(() => {
+            log('❌ Handshake TIMED OUT');
             cleanup();
-            resolve({ success: false, error: 'Transfer timed out — recipient may not have the chat open' });
-        }, 30000);
+            resolve({ success: false, error: 'Connection setup timed out' });
+        }, 60000);
 
         // Define signal handler for this specific transfer
         const onSignal = async (msg: any) => {
             if (msg.from === senderId) return;
             // Only care about messages for THIS transfer
             if (msg.transferId !== transferId) return;
+
+            resetTimeout(); // Reset on any signal activity
 
             log(`📨 SEND context received: type=${msg.type}`);
 
@@ -226,6 +240,7 @@ export async function sendFileP2P(
         // PC Callbacks
         pc.onconnectionstatechange = () => {
             log(`🔗 Connection state: ${pc.connectionState}`);
+            resetTimeout();
             if (pc.connectionState === 'failed') {
                 cleanup();
                 resolve({ success: false, error: 'WebRTC connection failed' });
@@ -236,6 +251,7 @@ export async function sendFileP2P(
 
         dataChannel.onopen = async () => {
             log('📡 DataChannel OPEN — sending file...');
+            resetTimeout();
             const metadata: FileMetadata = { fileName, fileType, fileSize: file.size, senderId, transferId };
             dataChannel.send(JSON.stringify({ type: 'metadata', data: metadata }));
 
@@ -244,6 +260,9 @@ export async function sendFileP2P(
             let sentChunks = 0;
 
             for (let offset = 0; offset < arrayBuffer.byteLength; offset += CHUNK_SIZE) {
+                if (hasResolved) break; // Stop if failed/closed
+                resetTimeout(); // Reset timer for every chunk
+
                 const chunk = arrayBuffer.slice(offset, offset + CHUNK_SIZE);
                 while (dataChannel.bufferedAmount > CHUNK_SIZE * 8) {
                     await new Promise(r => setTimeout(r, 10));
@@ -258,6 +277,7 @@ export async function sendFileP2P(
         };
 
         dataChannel.onmessage = (event) => {
+            resetTimeout();
             try {
                 const msg = JSON.parse(event.data);
                 if (msg.type === 'ack' && msg.transferId === transferId) {

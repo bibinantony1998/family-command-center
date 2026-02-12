@@ -201,16 +201,29 @@ export async function sendFileP2P(
             });
         }
 
+        let timeoutHandle: ReturnType<typeof setTimeout>;
 
-        const timeoutHandle = setTimeout(() => {
-            log('❌ Transfer TIMED OUT after 30s');
+        const resetTimeout = () => {
+            clearTimeout(timeoutHandle);
+            timeoutHandle = setTimeout(() => {
+                log('❌ Transfer TIMED OUT due to inactivity');
+                cleanup();
+                resolve(false);
+            }, 10000); // 10s inactivity
+        };
+
+        // Initial setup timeout
+        timeoutHandle = setTimeout(() => {
+            log('❌ Handshake TIMED OUT');
             cleanup();
             resolve(false);
-        }, 30000);
+        }, 60000);
 
         const onSignal = async (msg: any) => {
             if (msg.from === senderId) return;
             if (msg.transferId !== transferId) return;
+
+            resetTimeout();
 
             log(`📨 SEND context received: type=${msg.type}`);
 
@@ -242,6 +255,7 @@ export async function sendFileP2P(
 
         pc.onconnectionstatechange = () => {
             log(`🔗 Connection state: ${pc.connectionState}`);
+            resetTimeout();
             if (pc.connectionState === 'failed') {
                 cleanup();
                 resolve(false);
@@ -252,6 +266,7 @@ export async function sendFileP2P(
 
         dataChannel.onopen = async () => {
             log('📡 DataChannel OPEN — sending file...');
+            resetTimeout();
             const metadata: FileMetadata = { fileName, fileType, fileSize, senderId, transferId };
             dataChannel.send(JSON.stringify({ type: 'metadata', data: metadata }));
 
@@ -259,6 +274,9 @@ export async function sendFileP2P(
             let sentChunks = 0;
 
             for (let offset = 0; offset < arrayBuffer.byteLength; offset += CHUNK_SIZE) {
+                if (hasResolved) break;
+                resetTimeout();
+
                 const chunk = arrayBuffer.slice(offset, offset + CHUNK_SIZE);
                 while (dataChannel.bufferedAmount > CHUNK_SIZE * 8) {
                     await new Promise(r => setTimeout(r, 10));
@@ -273,6 +291,7 @@ export async function sendFileP2P(
         };
 
         dataChannel.onmessage = (event: any) => {
+            resetTimeout();
             try {
                 const msg = JSON.parse(event.data);
                 if (msg.type === 'ack' && msg.transferId === transferId) {

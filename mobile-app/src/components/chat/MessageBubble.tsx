@@ -78,15 +78,17 @@ export const MessageBubble = ({ message, isOwn, showSenderName, onLongPress }: M
                     </Text>
                 </View>
 
-                <TouchableOpacity
-                    onPress={() => Linking.openURL(message.attachment_blob_url!)}
-                    style={[attachStyles.downloadBtn, isOwn ? attachStyles.ownDownloadBtn : attachStyles.otherDownloadBtn]}
-                >
-                    <Download size={16} color={isOwn ? '#fff' : '#6366f1'} />
-                    <Text style={[attachStyles.downloadText, isOwn ? { color: '#fff' } : { color: '#6366f1' }]}>
-                        Save to Gallery
-                    </Text>
-                </TouchableOpacity>
+                {!isOwn && (
+                    <TouchableOpacity
+                        onPress={() => Linking.openURL(message.attachment_blob_url!)}
+                        style={[attachStyles.downloadBtn, attachStyles.otherDownloadBtn]}
+                    >
+                        <Download size={16} color="#6366f1" />
+                        <Text style={[attachStyles.downloadText, { color: '#6366f1' }]}>
+                            Save to Gallery
+                        </Text>
+                    </TouchableOpacity>
+                )}
             </View>
         );
     };
