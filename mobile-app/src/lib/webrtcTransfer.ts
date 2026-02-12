@@ -145,7 +145,8 @@ export async function sendFileP2P(
     senderId: string,
     recipientId: string,
     familyId: string,
-    onProgress?: TransferProgressCallback
+    onProgress?: TransferProgressCallback,
+    abortSignal?: AbortSignal
 ): Promise<boolean> {
     const { RTCPeerConnection, RTCSessionDescription, RTCIceCandidate } = require('react-native-webrtc');
 
@@ -179,6 +180,15 @@ export async function sendFileP2P(
             pc.close();
             releaseChannel?.();
         };
+
+        if (abortSignal) {
+            abortSignal.addEventListener('abort', () => {
+                log('🛑 Transfer ABORTED by user');
+                cleanup();
+                resolve(false);
+            });
+        }
+
 
         const timeoutHandle = setTimeout(() => {
             log('❌ Transfer TIMED OUT after 30s');

@@ -5,14 +5,14 @@ import { supabase } from '../../lib/supabase';
 import { ChatMessage } from '../../types/schema';
 import { KeyManager, DeviceKey } from '../../lib/encryption';
 import { MessageBubble } from '../../components/chat/MessageBubble';
-import { Send, ArrowLeft, Paperclip } from 'lucide-react-native';
+import { ChevronLeft, Send, Paperclip, MoreVertical, Trash2, Download, X } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../navigation/types';
 import { usePresence } from '../../hooks/usePresence';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { sendFileP2P, listenForIncomingFiles } from '../../lib/webrtcTransfer';
-import { queueAttachment, getQueuedAttachments, drainQueueForRecipient, setOnQueueDrain } from '../../lib/attachmentQueue';
+import { queueAttachment, getQueuedAttachments, drainQueueForRecipient, setOnQueueDrain, subscribeToQueue, removeFromQueue } from '../../lib/attachmentQueue';
 import { useChat } from '../../context/ChatContext';
 
 type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>;
@@ -32,7 +32,10 @@ export default function ChatScreen() {
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [transferProgress, setTransferProgress] = useState<number | null>(null);
-    const [pendingAttachment, setPendingAttachment] = useState<{ uri: string; fileName: string; fileType: 'image' | 'video' | 'audio'; fileSize: number } | null>(null);
+    const [pendingAttachment, setPendingAttachment] = useState<{ uri: string; fileName: string; fileType: 'image' | 'video' | 'audio'; fileSize?: number } | null>(null);
+    const [queuedFiles, setQueuedFiles] = useState(getQueuedAttachments(recipientId || ''));
+    const [showQueueModal, setShowQueueModal] = useState(false);
+    const abortController = useRef<AbortController | null>(null);
     const flatListRef = useRef<FlatList>(null);
     const PAGE_SIZE = 20;
 
@@ -45,6 +48,22 @@ export default function ChatScreen() {
     const senderDeviceKeysRef = useRef<DeviceKey[]>([]);
     // Map of deviceId -> publicKey for quick lookup during decryption
     const deviceKeyMapRef = useRef<Map<string, string>>(new Map());
+
+    useEffect(() => {
+        if (!recipientId) return;
+        setQueuedFiles(getQueuedAttachments(recipientId));
+        return subscribeToQueue(() => {
+            const current = getQueuedAttachments(recipientId);
+            setQueuedFiles(current);
+            if (current.length === 0) {
+                setShowQueueModal(false);
+            }
+        });
+    }, [recipientId]);
+
+    const deleteQueuedItem = (id: string) => {
+        removeFromQueue(id);
+    };
 
     /**
      * Decrypt a message using the appropriate strategy:
@@ -364,7 +383,8 @@ export default function ChatScreen() {
 
         if (result.didCancel || !result.assets?.[0]) return;
         const asset = result.assets[0];
-        if (!asset.uri || !asset.fileName) return;
+        if (!asset.uri) return;
+        const fileName = asset.fileName || `File_${Date.now()}`;
 
         let fileType: 'image' | 'video' | 'audio';
         if (asset.type?.startsWith('image/')) fileType = 'image';
@@ -380,61 +400,87 @@ export default function ChatScreen() {
         // Show confirmation modal instead of sending immediately
         setPendingAttachment({
             uri: asset.uri,
-            fileName: asset.fileName,
+            fileName: fileName,
             fileType,
             fileSize
         });
     }, [recipientId, user?.id, family?.id]);
 
+    const cancelTransfer = () => {
+        if (abortController.current) {
+            abortController.current.abort();
+            abortController.current = null;
+        }
+        setTransferProgress(null);
+    };
+
     const confirmSend = async () => {
         if (!pendingAttachment || !recipientId || !user?.id || !family?.id) return;
-
         const { uri, fileName, fileType, fileSize } = pendingAttachment;
-        setPendingAttachment(null); // Close modal
+        setPendingAttachment(null);
 
         if (isRecipientOnline) {
+            const ac = new AbortController();
+            abortController.current = ac;
+
+            setSending(true);
             setTransferProgress(0);
-            const success = await sendFileP2P(
-                uri, fileName, fileType, fileSize,
-                user.id, recipientId, family.id,
-                (p: number) => setTransferProgress(p)
-            );
-            setTransferProgress(null);
 
-            if (success) {
-                // Insert into DB
-                const { data } = await supabase.from('chat_messages').insert({
-                    family_id: family.id,
-                    sender_id: user.id,
-                    recipient_id: recipientId,
-                    content: `📎 ${fileType.charAt(0).toUpperCase() + fileType.slice(1)}: ${fileName}`,
-                    attachment_type: fileType,
-                    attachment_name: fileName,
-                    attachment_size: fileSize,
-                    read_by: [user.id]
-                }).select().single();
+            try {
+                const success = await sendFileP2P(
+                    uri,
+                    fileName,
+                    fileType,
+                    fileSize || 0,
+                    user.id,
+                    recipientId,
+                    family.id,
+                    (progress) => setTransferProgress(progress),
+                    ac.signal
+                );
 
-                // Optimistically update local state with the local URI so it renders immediately
-                if (data) {
-                    setMessages(prev => [
-                        ...prev,
-                        { ...data, attachment_blob_url: uri, sender: { display_name: 'Me', avatar_url: null } },
-                    ]);
+                if (success) {
+                    const { data: newMessage, error } = await supabase
+                        .from('chat_messages')
+                        .insert({
+                            family_id: family.id,
+                            sender_id: user.id,
+                            recipient_id: recipientId,
+                            message_type: fileType,
+                            content: 'Sent an attachment',
+                            attachment_url: 'p2p_transfer',
+                            attachment_name: fileName,
+                            attachment_size: fileSize,
+                            metadata: { status: 'sent', p2p: true }
+                        })
+                        .select('*, sender:sender_id(display_name, avatar_url)')
+                        .single();
+
+                    if (!error && newMessage) {
+                        setMessages(prev => [...prev, newMessage as ChatMessage]);
+                    }
+                } else {
+                    Alert.alert('Transfer Failed', 'Could not send file directly.');
                 }
-            } else {
-                Alert.alert('Transfer Failed', 'File queued for when recipient comes online.');
-                queueAttachment({
-                    fileUri: uri, fileName: fileName, fileType,
-                    fileSize, recipientId, familyId: family.id, senderId: user.id
-                });
+            } catch (err) {
+                console.error('Send error:', err);
+                Alert.alert('Error', 'Failed to send file');
+            } finally {
+                setSending(false);
+                setTransferProgress(null);
+                abortController.current = null;
             }
         } else {
-            // Offline queue logic
-            queueAttachment({
-                fileUri: uri, fileName: fileName, fileType,
-                fileSize, recipientId, familyId: family.id, senderId: user.id
+            // Queue for offline
+            await queueAttachment({
+                fileUri: uri,
+                fileName,
+                fileType,
+                fileSize: fileSize || 0,
+                recipientId,
+                familyId: family.id,
+                senderId: user.id
             });
-            Alert.alert('Offline', 'Recipient is offline. File queued for auto-send.');
         }
     };
 
@@ -524,7 +570,7 @@ export default function ChatScreen() {
             >
                 <View style={styles.header}>
                     <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                        <ArrowLeft color="#0f172a" size={24} />
+                        <ChevronLeft color="#0f172a" size={24} />
                     </TouchableOpacity>
                     <View style={styles.headerCenter}>
                         <Text style={styles.headerTitle}>{name}</Text>
@@ -540,13 +586,7 @@ export default function ChatScreen() {
                     <View style={{ width: 24 }} />
                 </View>
 
-                {/* Transfer Progress Bar */}
-                {transferProgress !== null && (
-                    <View style={styles.progressContainer}>
-                        <View style={[styles.progressBar, { width: `${Math.round(transferProgress * 100)}%` }]} />
-                        <Text style={styles.progressText}>{Math.round(transferProgress * 100)}%</Text>
-                    </View>
-                )}
+
 
                 <FlatList
                     ref={flatListRef}
@@ -582,29 +622,55 @@ export default function ChatScreen() {
                 />
 
                 <View style={styles.inputContainer}>
-                    {isDM && (
+                    {/* Queue Banner */}
+                    {queuedFiles.length > 0 && (
                         <TouchableOpacity
-                            style={styles.attachButton}
-                            onPress={handleAttachmentPick}
+                            style={styles.queueBanner}
+                            onPress={() => setShowQueueModal(true)}
                         >
-                            <Paperclip color="#64748b" size={22} />
+                            <Text style={styles.queueBannerText}>
+                                ☁️ {queuedFiles.length} file{queuedFiles.length > 1 ? 's' : ''} queued for {name}
+                            </Text>
+                            <ChevronLeft style={{ transform: [{ rotate: '180deg' }] }} size={16} color="#64748b" />
                         </TouchableOpacity>
                     )}
-                    <TextInput
-                        style={styles.input}
-                        value={inputText}
-                        onChangeText={setInputText}
-                        placeholder="Type a message..."
-                        placeholderTextColor="#94a3b8"
-                        multiline
-                    />
-                    <TouchableOpacity
-                        style={[styles.sendButton, !inputText.trim() && styles.disabledButton]}
-                        onPress={handleSend}
-                        disabled={!inputText.trim() || sending}
-                    >
-                        {sending ? <ActivityIndicator color="white" size="small" /> : <Send color="white" size={20} />}
-                    </TouchableOpacity>
+                    {transferProgress !== null && (
+                        <View style={styles.uploadContainer}>
+                            <View style={styles.uploadProgressTrack}>
+                                <View style={[styles.uploadProgressBar, { width: `${Math.round(transferProgress * 100)}%` }]} />
+                            </View>
+                            <Text style={styles.uploadProgressText}>{Math.round(transferProgress * 100)}%</Text>
+                            <TouchableOpacity onPress={cancelTransfer} style={styles.stopButton}>
+                                <X color="#64748b" size={20} />
+                            </TouchableOpacity>
+                        </View>
+                    )}
+
+                    <View style={styles.inputRow}>
+                        {isDM && (
+                            <TouchableOpacity
+                                style={styles.attachButton}
+                                onPress={handleAttachmentPick}
+                            >
+                                <Paperclip color="#64748b" size={22} />
+                            </TouchableOpacity>
+                        )}
+                        <TextInput
+                            style={styles.input}
+                            value={inputText}
+                            onChangeText={setInputText}
+                            placeholder="Type a message..."
+                            placeholderTextColor="#94a3b8"
+                            multiline
+                        />
+                        <TouchableOpacity
+                            style={[styles.sendButton, !inputText.trim() && styles.disabledButton]}
+                            onPress={handleSend}
+                            disabled={!inputText.trim() || sending}
+                        >
+                            {sending ? <ActivityIndicator color="white" size="small" /> : <Send color="white" size={20} />}
+                        </TouchableOpacity>
+                    </View>
                 </View>
             </KeyboardAvoidingView>
 
@@ -622,8 +688,8 @@ export default function ChatScreen() {
                         {pendingAttachment?.fileType === 'image' && (
                             <Image
                                 source={{ uri: pendingAttachment.uri }}
-                                style={{ width: '100%', height: 180, borderRadius: 12, marginBottom: 12, backgroundColor: '#f1f5f9' }}
-                                resizeMode="cover"
+                                style={{ width: '100%', height: 200, borderRadius: 12, marginBottom: 12, backgroundColor: '#f1f5f9' }}
+                                resizeMode="contain"
                             />
                         )}
 
@@ -667,6 +733,51 @@ export default function ChatScreen() {
                     </View>
                 </View>
             </Modal>
+            {/* Queue Management Modal */}
+            <Modal
+                visible={showQueueModal}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowQueueModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Queued Uploads</Text>
+                            <TouchableOpacity onPress={() => setShowQueueModal(false)}>
+                                <X size={24} color="#94a3b8" />
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={styles.modalSubtitle}>
+                            Waiting for {name} to come online...
+                        </Text>
+
+                        <FlatList
+                            data={queuedFiles}
+                            keyExtractor={item => item.id}
+                            style={{ maxHeight: 300, width: '100%' }}
+                            renderItem={({ item }) => (
+                                <View style={styles.queueItem}>
+                                    <View style={styles.queueItemInfo}>
+                                        <Text style={styles.queueItemName} numberOfLines={1}>
+                                            {item.fileType === 'image' ? '📷' : item.fileType === 'video' ? '🎥' : '🎵'} {item.fileName || 'Unknown File'}
+                                        </Text>
+                                        <Text style={styles.queueItemSize}>
+                                            {item.fileSize ? `${(item.fileSize / 1024).toFixed(1)} KB` : 'Unknown size'}
+                                        </Text>
+                                    </View>
+                                    <TouchableOpacity
+                                        onPress={() => deleteQueuedItem(item.id)}
+                                        style={styles.deleteBtn}
+                                    >
+                                        <Trash2 size={18} color="#ef4444" />
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        />
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -702,6 +813,51 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#1e293b',
         marginBottom: 8,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        marginBottom: 4,
+    },
+    modalSubtitle: {
+        fontSize: 13,
+        color: '#64748b',
+        marginBottom: 16,
+    },
+    queueItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 12,
+        width: '100%',
+        backgroundColor: '#f8fafc',
+        borderRadius: 8,
+        marginBottom: 8,
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+    },
+    queueItemInfo: {
+        flex: 1,
+        marginRight: 12,
+    },
+    queueItemName: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#334155',
+        marginBottom: 2,
+    },
+    queueItemSize: {
+        fontSize: 12,
+        color: '#94a3b8',
+    },
+    deleteBtn: {
+        padding: 8,
+        backgroundColor: '#fef2f2',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#fee2e2',
     },
     modalText: {
         fontSize: 14,
@@ -786,35 +942,69 @@ const styles = StyleSheet.create({
         fontSize: 11,
         fontWeight: '500',
     },
-    progressContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 4,
-        backgroundColor: '#eef2ff',
-    },
-    progressBar: {
-        height: 4,
-        backgroundColor: '#6366f1',
-        borderRadius: 2,
-    },
-    progressText: {
-        fontSize: 11,
-        color: '#6366f1',
-        marginLeft: 8,
-        fontWeight: '600',
-    },
+
     listContent: {
         padding: 16,
         paddingBottom: 32,
     },
     inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
+        flexDirection: 'column',
         padding: 12,
+        paddingTop: 0,
         borderTopWidth: 1,
         borderTopColor: '#f1f5f9',
         backgroundColor: 'white',
+    },
+    queueBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#f8fafc',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        marginBottom: 8,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+    },
+    queueBannerText: {
+        fontSize: 12,
+        color: '#64748b',
+        fontWeight: '500',
+    },
+    inputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%',
+    },
+    uploadContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+        paddingHorizontal: 4,
+        gap: 12,
+        width: '100%',
+    },
+    uploadProgressTrack: {
+        flex: 1,
+        height: 6,
+        backgroundColor: '#f1f5f9',
+        borderRadius: 3,
+        overflow: 'hidden',
+    },
+    uploadProgressBar: {
+        height: '100%',
+        backgroundColor: '#6366f1',
+    },
+    uploadProgressText: {
+        fontSize: 12,
+        color: '#64748b',
+        fontWeight: '500',
+        width: 35,
+        textAlign: 'right',
+    },
+    stopButton: {
+        padding: 4,
     },
     attachButton: {
         padding: 8,

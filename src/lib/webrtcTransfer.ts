@@ -148,7 +148,8 @@ export async function sendFileP2P(
     senderId: string,
     recipientId: string,
     familyId: string,
-    onProgress?: TransferProgressCallback
+    onProgress?: TransferProgressCallback,
+    abortSignal?: AbortSignal
 ): Promise<{ success: boolean; error?: string }> {
     const transferId = crypto.randomUUID();
     const channelName = getSignalChannelName(familyId, senderId, recipientId);
@@ -170,6 +171,14 @@ export async function sendFileP2P(
             pc.close();
             releaseChannel?.(); // Release the shared channel ref
         };
+
+        if (abortSignal) {
+            abortSignal.addEventListener('abort', () => {
+                log('🛑 Transfer ABORTED by user');
+                cleanup();
+                resolve({ success: false, error: 'Transfer cancelled by user' });
+            });
+        }
 
         const timeoutHandle = setTimeout(() => {
             log('❌ Transfer TIMED OUT after 30s');

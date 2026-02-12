@@ -18,11 +18,22 @@ interface QueuedAttachment {
 
 const queue: QueuedAttachment[] = [];
 let onQueueDrainCallback: ((attachment: QueuedAttachment) => Promise<void>) | null = null;
+const listeners = new Set<() => void>();
+
+export function subscribeToQueue(callback: () => void): () => void {
+    listeners.add(callback);
+    return () => listeners.delete(callback);
+}
+
+function notifyListeners() {
+    listeners.forEach(cb => cb());
+}
 
 export function queueAttachment(attachment: Omit<QueuedAttachment, 'id' | 'queuedAt'>): string {
     const id = crypto.randomUUID();
     const entry: QueuedAttachment = { ...attachment, id, queuedAt: Date.now() };
     queue.push(entry);
+    notifyListeners();
     return id;
 }
 
@@ -32,7 +43,10 @@ export function getQueuedAttachments(recipientId: string): QueuedAttachment[] {
 
 export function removeFromQueue(id: string): void {
     const idx = queue.findIndex(a => a.id === id);
-    if (idx !== -1) queue.splice(idx, 1);
+    if (idx !== -1) {
+        queue.splice(idx, 1);
+        notifyListeners();
+    }
 }
 
 export function getQueueLength(): number {

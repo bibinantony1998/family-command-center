@@ -2,10 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { ChatMessage, Profile } from '../../types';
 import { MessageBubble } from './MessageBubble';
-import { Send, Paperclip } from 'lucide-react';
+import { Send, Paperclip, Download, Trash2, X } from 'lucide-react';
 import { KeyManager, type DeviceKey } from '../../lib/encryption';
 import { sendFileP2P, listenForIncomingFiles } from '../../lib/webrtcTransfer';
-import { queueAttachment, getQueuedAttachments, drainQueueForRecipient, setOnQueueDrain } from '../../lib/attachmentQueue';
+import { queueAttachment, getQueuedAttachments, drainQueueForRecipient, setOnQueueDrain, subscribeToQueue, removeFromQueue } from '../../lib/attachmentQueue';
 
 interface ChatWindowProps {
     recipientId: string | null; // null = group
@@ -22,9 +22,12 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
     const [hasMore, setHasMore] = useState(true);
     const [transferProgress, setTransferProgress] = useState<number | null>(null);
     const [transferError, setTransferError] = useState<string | null>(null);
-    const [showOfflineTooltip, setShowOfflineTooltip] = useState(false);
     const [pendingAttachment, setPendingAttachment] = useState<{ file: File; fileName: string; fileType: 'image' | 'video' | 'audio' } | null>(null);
+    const [queuedFiles, setQueuedFiles] = useState(getQueuedAttachments(recipientId || ''));
+    const [showQueueModal, setShowQueueModal] = useState(false);
     const [recipientProfile, setRecipientProfile] = useState<Profile | null>(null);
+
+    const abortController = useRef<AbortController | null>(null);
     const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; messageId: string | null }>({ isOpen: false, messageId: null });
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -36,6 +39,22 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
     const senderDeviceKeysRef = useRef<DeviceKey[]>([]);
     // Map of deviceId -> publicKey for quick lookup during decryption
     const deviceKeyMapRef = useRef<Map<string, string>>(new Map());
+
+    useEffect(() => {
+        if (!recipientId) return;
+        setQueuedFiles(getQueuedAttachments(recipientId));
+        return subscribeToQueue(() => {
+            const current = getQueuedAttachments(recipientId);
+            setQueuedFiles(current);
+            if (current.length === 0) {
+                setShowQueueModal(false);
+            }
+        });
+    }, [recipientId]);
+
+    const deleteQueuedItem = (id: string) => {
+        removeFromQueue(id);
+    };
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -137,7 +156,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                     .range(0, PAGE_SIZE - 1);
 
                 if (recipientId) {
-                    query = query.or(`and(sender_id.eq.${currentProfile.id},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${currentProfile.id})`);
+                    query = query.or(`and(sender_id.eq.${currentProfile.id}, recipient_id.eq.${recipientId}), and(sender_id.eq.${recipientId}, recipient_id.eq.${currentProfile.id})`);
                 } else {
                     query = query.is('recipient_id', null);
                 }
@@ -285,7 +304,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                 .range(offset, offset + PAGE_SIZE - 1);
 
             if (recipientId) {
-                query = query.or(`and(sender_id.eq.${currentProfile.id},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${currentProfile.id})`);
+                query = query.or(`and(sender_id.eq.${currentProfile.id}, recipient_id.eq.${recipientId}), and(sender_id.eq.${recipientId}, recipient_id.eq.${currentProfile.id})`);
             } else {
                 query = query.is('recipient_id', null);
             }
@@ -405,10 +424,6 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
     // --- ATTACHMENT HANDLING ---
     const handleAttachmentClick = () => {
         if (!recipientId) return; // Only for DMs
-        if (!isRecipientOnline) {
-            setShowOfflineTooltip(true);
-            setTimeout(() => setShowOfflineTooltip(false), 3000);
-        }
         fileInputRef.current?.click();
     };
 
@@ -437,58 +452,62 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
         });
     }, [recipientId]);
 
+    const cancelTransfer = () => {
+        if (abortController.current) {
+            abortController.current.abort();
+            abortController.current = null;
+        }
+        setTransferProgress(null);
+    };
+
     const confirmSend = async () => {
         if (!pendingAttachment || !recipientId) return;
-
         const { file, fileName, fileType } = pendingAttachment;
         setPendingAttachment(null); // Close modal
 
         if (isRecipientOnline) {
-            // Send directly via WebRTC
+            const ac = new AbortController();
+            abortController.current = ac;
+
             setTransferProgress(0);
             setTransferError(null);
-            const result = await sendFileP2P(
+
+            const { success, error } = await sendFileP2P(
                 file, fileName, fileType,
                 currentProfile.id, recipientId, familyId,
-                (p) => setTransferProgress(p)
+                (p) => setTransferProgress(p),
+                ac.signal
             );
-            setTransferProgress(null);
 
-            if (result.success) {
-                setTransferError(null);
-                // Insert metadata message into DB
-                const blobUrl = URL.createObjectURL(file);
+            setTransferProgress(null);
+            abortController.current = null;
+
+            if (success) {
+                // Insert message into DB
                 const { data } = await supabase.from('chat_messages').insert({
                     family_id: familyId,
                     sender_id: currentProfile.id,
                     recipient_id: recipientId,
-                    content: `📎 ${fileType.charAt(0).toUpperCase() + fileType.slice(1)}: ${fileName}`,
+                    content: `📎 ${fileType.charAt(0).toUpperCase() + fileType.slice(1)}: ${fileName} `,
                     attachment_type: fileType,
                     attachment_name: fileName,
                     attachment_size: file.size,
                     read_by: [currentProfile.id]
-                }).select().single();
+                }).select('*, sender:sender_id(display_name, avatar_url)').single();
 
                 if (data) {
-                    setMessages(prev => [...prev, { ...data, attachment_blob_url: blobUrl, sender: currentProfile }]);
+                    setMessages(prev => [...prev, data as ChatMessage]);
                 }
-            } else {
-                const errMsg = result.error || 'File transfer failed';
-                setTransferError(errMsg);
-                console.error('[Attachment]', errMsg);
-                queueAttachment({
-                    file, fileName: fileName, fileType,
-                    recipientId, familyId, senderId: currentProfile.id
-                });
+            } else if (error !== 'Transfer cancelled by user') {
+                setTransferError(error || 'Transfer failed');
             }
         } else {
-            // Queue for later
-            queueAttachment({
-                file, fileName: fileName, fileType,
-                recipientId, familyId, senderId: currentProfile.id
+            // Offline queue logic
+            await queueAttachment({
+                file, fileName, fileType,
+                recipientId, familyId,
+                senderId: currentProfile.id
             });
-            setShowOfflineTooltip(true);
-            setTimeout(() => setShowOfflineTooltip(false), 3000);
         }
     };
 
@@ -502,7 +521,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
             recipientId,
             async (metadata, blob) => {
                 const blobUrl = URL.createObjectURL(blob);
-                console.log(`[Attachment] Received file ${metadata.fileName}, size=${metadata.fileSize}. Blob created: ${blobUrl}`);
+                console.log(`[Attachment] Received file ${metadata.fileName}, size = ${metadata.fileSize}. Blob created: ${blobUrl} `);
 
                 // Retry logic: The message metadata might arrive slightly AFTER the file transfer finishes.
                 let attempts = 0;
@@ -593,14 +612,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                     <button onClick={() => setTransferError(null)} className="text-red-400 hover:text-red-600 ml-2">✕</button>
                 </div>
             )}
-            {transferProgress !== null && (
-                <div className="bg-indigo-50 px-4 py-1 text-xs text-indigo-600 flex items-center gap-2">
-                    <div className="flex-1 bg-indigo-100 rounded-full h-1.5">
-                        <div className="bg-indigo-500 h-1.5 rounded-full transition-all" style={{ width: `${Math.round(transferProgress * 100)}%` }}></div>
-                    </div>
-                    <span>{Math.round(transferProgress * 100)}%</span>
-                </div>
-            )}
+
 
             {/* Messages Area */}
             <div
@@ -636,13 +648,39 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
             </div>
 
             {/* Input Area */}
-            <form onSubmit={handleSend} className="p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white border-t border-slate-200 flex gap-2 shrink-0 relative">
-                {/* Offline Tooltip */}
-                {showOfflineTooltip && (
-                    <div className="absolute -top-10 left-4 bg-slate-800 text-white text-xs px-3 py-1.5 rounded-lg shadow-lg">
-                        Recipient is offline. File queued for auto-send.
+            {transferProgress !== null && (
+                <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 border-t border-slate-200">
+                    <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div
+                            className="h-full bg-indigo-500 transition-all duration-300 ease-out"
+                            style={{ width: `${Math.round(transferProgress * 100)}% ` }}
+                        />
                     </div>
-                )}
+                    <span className="text-xs font-medium text-slate-500 w-8 text-right">
+                        {Math.round(transferProgress * 100)}%
+                    </span>
+                    <button
+                        onClick={cancelTransfer}
+                        className="p-1 hover:bg-slate-200 rounded-full text-slate-400 hover:text-red-500 transition"
+                        title="Cancel Upload"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+            )}
+            {/* Queue Banner */}
+            {queuedFiles.length > 0 && (
+                <div
+                    onClick={() => setShowQueueModal(true)}
+                    className="flex items-center justify-between px-4 py-2 bg-slate-50 border-t border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors"
+                >
+                    <span className="text-xs font-medium text-slate-500">
+                        ☁️ {queuedFiles.length} file{queuedFiles.length > 1 ? 's' : ''} queued for auto-send
+                    </span>
+                    <span className="text-xs text-indigo-600 font-medium">View Queue</span>
+                </div>
+            )}
+            <form onSubmit={handleSend} className="p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white border-t border-slate-200 flex gap-2 shrink-0 relative">
 
                 {/* Attachment Button (DM only) */}
                 {isDM && (
@@ -705,6 +743,50 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                 </div>
             )}
 
+            {/* Queue Management Modal */}
+            {showQueueModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 animate-in fade-in zoom-in duration-200">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-bold text-gray-900">Queued Uploads</h3>
+                            <button onClick={() => setShowQueueModal(false)} className="text-slate-400 hover:text-slate-600">
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <p className="text-gray-600 text-sm mb-4">
+                            Waiting for recipient to come online...
+                        </p>
+
+                        <div className="max-h-64 overflow-y-auto space-y-2 mb-2">
+                            {queuedFiles.map(item => (
+                                <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                    <div className="flex-1 mr-3 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-lg leading-none">
+                                                {item.fileType === 'image' ? '📷' : item.fileType === 'video' ? '🎥' : '🎵'}
+                                            </span>
+                                            <p className="text-sm font-medium text-slate-700 truncate">
+                                                {item.fileName}
+                                            </p>
+                                        </div>
+                                        <p className="text-xs text-slate-400 ml-7">
+                                            {formatFileSize(item.file.size)}
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={() => deleteQueuedItem(item.id)}
+                                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Remove from queue"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Attachment Confirmation Modal */}
             {pendingAttachment && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
@@ -718,7 +800,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
                                 <img
                                     src={URL.createObjectURL(pendingAttachment.file)}
                                     alt="Preview"
-                                    className="w-full h-full object-cover"
+                                    className="w-full h-full object-contain"
                                 />
                             </div>
                         )}
