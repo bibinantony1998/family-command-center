@@ -278,9 +278,13 @@ export async function sendFileP2P(
                 resetTimeout();
 
                 const chunk = arrayBuffer.slice(offset, offset + CHUNK_SIZE);
+
+                // throttling to prevent buffer overflow
                 while (dataChannel.bufferedAmount > CHUNK_SIZE * 8) {
                     await new Promise(r => setTimeout(r, 10));
                 }
+
+                // React Native WebRTC handles ArrayBuffer directly
                 dataChannel.send(chunk);
                 sentChunks++;
                 onProgress?.(sentChunks / totalChunks);
@@ -293,11 +297,15 @@ export async function sendFileP2P(
         dataChannel.onmessage = (event: any) => {
             resetTimeout();
             try {
-                const msg = JSON.parse(event.data);
-                if (msg.type === 'ack' && msg.transferId === transferId) {
-                    log('✅ Got ACK');
-                    cleanup();
-                    resolve(true);
+                // Handle both string and potentially binary ACKs if we ever switch
+                const data = event.data;
+                if (typeof data === 'string') {
+                    const msg = JSON.parse(data);
+                    if (msg.type === 'ack' && msg.transferId === transferId) {
+                        log('✅ Got ACK');
+                        cleanup();
+                        resolve(true);
+                    }
                 }
             } catch { /* ignore */ }
         };
@@ -393,9 +401,13 @@ export function listenForIncomingFiles(
                     pendingCandidates.delete(msg.transferId);
                 }
 
-                const receivedChunks: ArrayBuffer[] = [];
+                const ReactNativeBlobUtil = require('react-native-blob-util').default;
+                const { Buffer } = require('buffer');
+
                 let metadata: FileMetadata | null = null;
                 let cleanupCalled = false;
+                let writeStream: any = null;
+                let receivedBytes = 0;
 
                 const shared = channelCache.get(channelName);
                 if (!shared) {
@@ -410,6 +422,12 @@ export function listenForIncomingFiles(
                     if (cleanupCalled) return;
                     cleanupCalled = true;
                     transfers.delete(msg.transferId);
+
+                    if (writeStream) {
+                        try { writeStream.close(); } catch { }
+                        writeStream = null;
+                    }
+
                     setTimeout(() => {
                         try { dc?.close(); } catch { /* ignore */ }
                         try { pc.close(); } catch { /* ignore */ }
@@ -428,60 +446,74 @@ export function listenForIncomingFiles(
                         console.error('DataChannel ERROR:', err);
                     };
 
-                    dc.onmessage = (msgEvent: any) => {
+                    dc.onmessage = async (msgEvent: any) => {
                         if (typeof msgEvent.data === 'string') {
                             try {
                                 const parsed = JSON.parse(msgEvent.data);
                                 if (parsed.type === 'metadata') {
                                     metadata = parsed.data;
                                     log(`📦 RECV metadata: size=${metadata!.fileSize}`);
-                                } else if (parsed.type === 'done' && metadata) {
-                                    log('✅ RECV DONE signal. Writing file...');
 
-                                    // Write to file instead of Blob
-                                    const ReactNativeBlobUtil = require('react-native-blob-util').default;
-                                    const { Buffer } = require('buffer');
+                                    // Initialize Write Stream
                                     const dirs = ReactNativeBlobUtil.fs.dirs;
-                                    const filePath = `${dirs.CacheDir}/${metadata.fileName}`;
+                                    const filePath = `${dirs.CacheDir}/${metadata!.fileName}`;
 
-                                    // Combine chunks and write
-                                    // Note: Buffer.concat can be memory intensive for large files on mobile
+                                    // Delete existing if any
+                                    if (await ReactNativeBlobUtil.fs.exists(filePath)) {
+                                        await ReactNativeBlobUtil.fs.unlink(filePath);
+                                    }
+
                                     try {
-                                        const combinedBuffer = Buffer.concat(receivedChunks.map(ab => Buffer.from(ab)));
-                                        const base64 = combinedBuffer.toString('base64');
-
-                                        ReactNativeBlobUtil.fs.writeFile(filePath, base64, 'base64')
-                                            .then(() => {
-                                                log(`💾 File saved to: ${filePath}`);
-                                                const fileUri = `file://${filePath}`;
-                                                if (metadata) {
-                                                    onFileReceived(metadata, fileUri as any);
-                                                }
-
-                                                try {
-                                                    dc.send(JSON.stringify({ type: 'ack', transferId: parsed.transferId }));
-                                                    log('Sent ACK');
-                                                } catch (e) {
-                                                    console.warn('Failed to send ACK:', e);
-                                                }
-
-                                                endTransfer();
-                                            })
-                                            .catch((err: any) => {
-                                                console.error('File write error:', err);
-                                                endTransfer();
-                                            });
-                                    } catch (err) {
-                                        console.error('Error combining/writing chunks:', err);
+                                        writeStream = await ReactNativeBlobUtil.fs.writeStream(filePath, 'base64');
+                                    } catch (e) {
+                                        console.error('Failed to create write stream:', e);
                                         endTransfer();
                                     }
+
+                                } else if (parsed.type === 'done' && metadata) {
+                                    log('✅ RECV DONE signal. Finalizing...');
+
+                                    if (writeStream) {
+                                        writeStream.close();
+                                        writeStream = null;
+                                    }
+
+                                    // Send ACK immediately
+                                    try {
+                                        dc.send(JSON.stringify({ type: 'ack', transferId: parsed.transferId }));
+                                        log('Sent ACK');
+                                    } catch (e) {
+                                        console.warn('Failed to send ACK:', e);
+                                    }
+
+                                    const dirs = ReactNativeBlobUtil.fs.dirs;
+                                    const filePath = `${dirs.CacheDir}/${metadata.fileName}`;
+                                    const fileUri = `file://${filePath}`;
+
+                                    log(`💾 File saved to: ${filePath}`);
+                                    if (onFileReceived) {
+                                        // Run on next tick
+                                        setTimeout(() => onFileReceived(metadata!, fileUri as any), 0);
+                                    }
+
+                                    endTransfer();
                                 }
                             } catch { /* ignore */ }
                         } else {
-                            receivedChunks.push(msgEvent.data);
-                            if (metadata && onProgress) {
-                                const received = receivedChunks.reduce((sum: number, c: ArrayBuffer) => sum + c.byteLength, 0);
-                                onProgress(received / metadata.fileSize);
+                            // Binary chunk
+                            if (writeStream) {
+                                try {
+                                    const chunkBase64 = Buffer.from(msgEvent.data).toString('base64');
+                                    writeStream.write(chunkBase64);
+                                    receivedBytes += (msgEvent.data.byteLength || msgEvent.data.size || 0);
+
+                                    if (metadata && onProgress) {
+                                        onProgress(receivedBytes / metadata.fileSize);
+                                    }
+                                } catch (e) {
+                                    console.error('Write stream error:', e);
+                                    endTransfer();
+                                }
                             }
                         }
                     };

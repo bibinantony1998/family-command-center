@@ -432,6 +432,7 @@ export function listenForIncomingFiles(
                     let metadata: FileMetadata | null = null;
                     let receivedBytes = 0;
 
+                    dc.binaryType = 'arraybuffer';
                     dc.onopen = () => log('DataChannel OPEN on receiver side');
                     dc.onerror = (err: any) => {
                         if (cleanupCalled) return;
@@ -451,15 +452,19 @@ export function listenForIncomingFiles(
                                     log(`📦 RECV metadata: ${metadata?.fileName}, size=${metadata?.fileSize}`);
                                 } else if (parsed.type === 'done' && metadata) {
                                     log('✅ RECV DONE signal. Assembling file...');
-                                    const blob = new Blob(receivedChunks); // type depends on metadata
-                                    if (onFileReceived) onFileReceived(metadata, blob);
 
-                                    // Send ACK
+                                    // Send ACK immediately to unblock sender
                                     try {
                                         dc.send(JSON.stringify({ type: 'ack', transferId: parsed.transferId }));
                                         log('Sent ACK');
                                     } catch (e) {
                                         console.error('Failed to send ACK:', e);
+                                    }
+
+                                    const blob = new Blob(receivedChunks);
+                                    if (onFileReceived) {
+                                        // Run UI update in next tick to avoid blocking networking
+                                        setTimeout(() => onFileReceived(metadata!, blob), 0);
                                     }
 
                                     endTransfer();
@@ -468,9 +473,9 @@ export function listenForIncomingFiles(
                                 console.error('Error parsing signaling message:', e);
                             }
                         } else {
-                            // Binary chunk
+                            // Binary chunk (ArrayBuffer)
                             receivedChunks.push(data);
-                            receivedBytes += (data.byteLength || data.size || 0);
+                            receivedBytes += (data.byteLength || 0);
 
                             if (metadata && onProgress) {
                                 onProgress(receivedBytes / metadata.fileSize);
