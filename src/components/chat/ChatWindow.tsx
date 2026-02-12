@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { ChatMessage, Profile } from '../../types';
 import { MessageBubble } from './MessageBubble';
-import { Send, Paperclip, Download, Trash2, X } from 'lucide-react';
+import { Send, Paperclip, Trash2, X } from 'lucide-react';
 import { KeyManager, type DeviceKey } from '../../lib/encryption';
 import { sendFileP2P, listenForIncomingFiles } from '../../lib/webrtcTransfer';
 import { queueAttachment, getQueuedAttachments, drainQueueForRecipient, setOnQueueDrain, subscribeToQueue, removeFromQueue } from '../../lib/attachmentQueue';
