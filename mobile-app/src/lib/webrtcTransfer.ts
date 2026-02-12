@@ -322,116 +322,126 @@ export function listenForIncomingFiles(
 
     log(`👂 LISTEN start on ${channelName}`);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const transfers = new Map<string, any>();
+
     const onSignal = async (msg: any) => {
-        if (msg.from === userId) return;
-        if (msg.type !== 'offer') return;
+        try {
+            if (msg.from === userId) return;
 
-        log(`📨 RECV got OFFER from ${msg.from}, transferId=${msg.transferId}`);
+            // Handle ICE Candidates
+            if (msg.type === 'ice-candidate') {
+                // Check if we have an active transfer for this ID
+                const pc = transfers.get(msg.transferId);
+                if (pc) {
+                    log(`❄️ RECV ICE candidate for ${msg.transferId}`);
+                    await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+                }
+                return;
+            }
 
-        const iceServers = await fetchIceServers();
-        const pc = new RTCPeerConnection({ iceServers });
-        const receivedChunks: ArrayBuffer[] = [];
-        let metadata: FileMetadata | null = null;
+            if (msg.type !== 'offer') return;
 
-        const shared = channelCache.get(channelName);
-        if (!shared) {
-            console.error('Channel lost during incoming offer');
-            return;
-        }
-        const signalChannel = shared.channel;
+            log(`📨 RECV got OFFER from ${msg.from}, transferId=${msg.transferId}`);
 
-        pc.ondatachannel = (event: any) => {
-            const dc = event.channel;
-            dc.onmessage = (msgEvent: any) => {
-                if (typeof msgEvent.data === 'string') {
-                    try {
-                        const parsed = JSON.parse(msgEvent.data);
-                        if (parsed.type === 'metadata') {
-                            metadata = parsed.data;
-                            log(`📦 RECV metadata: size=${metadata!.fileSize}`);
-                        } else if (parsed.type === 'done' && metadata) {
-                            // Write to file instead of Blob
-                            const ReactNativeBlobUtil = require('react-native-blob-util').default;
-                            const { Buffer } = require('buffer');
-                            const dirs = ReactNativeBlobUtil.fs.dirs;
-                            const filePath = `${dirs.CacheDir}/${metadata.fileName}`;
+            const iceServers = await fetchIceServers();
+            const pc = new RTCPeerConnection({ iceServers });
+            transfers.set(msg.transferId, pc);
+            const receivedChunks: ArrayBuffer[] = [];
+            let metadata: FileMetadata | null = null;
+            let cleanupCalled = false;
 
-                            // Combine chunks and write
-                            const combinedBuffer = Buffer.concat(receivedChunks.map(ab => Buffer.from(ab)));
-                            const base64 = combinedBuffer.toString('base64');
+            const shared = channelCache.get(channelName);
+            if (!shared) {
+                console.error('Channel lost during incoming offer');
+                transfers.delete(msg.transferId);
+                return;
+            }
+            const signalChannel = shared.channel;
 
-                            ReactNativeBlobUtil.fs.writeFile(filePath, base64, 'base64')
-                                .then(() => {
-                                    log(`💾 File saved to: ${filePath}`);
-                                    // Pass a fake "Blob" object that actually contains the URI for the UI
-                                    // The UI expects { size, type } + URL.createObjectURL behavior
-                                    // We will monkey-patch the blob handling in the callback or just pass a custom object if type allows
-                                    // Actually, let's just mimic a Blob but return the URI in the callback metadata or separate arg?
-                                    // The callback signature is (metadata, blob).
-                                    // We can attach the URI to the metadata?
-                                    // Or we can return a "Blob-like" object with a `uri` property.
+            // Helper to cleanup
+            const endTransfer = () => {
+                if (cleanupCalled) return;
+                cleanupCalled = true;
+                transfers.delete(msg.transferId);
+                setTimeout(() => {
+                    try { dc?.close(); } catch { /* ignore */ }
+                    try { pc.close(); } catch { /* ignore */ }
+                }, 1000);
+            };
 
-                                    // Better approach: Update the metadata to include the local URI
-                                    // But metadata comes from the sender.
+            let dc: any = null;
 
-                                    // Let's create a Blob that has a custom property `_localUri`?
-                                    // React Native Blob from 'react-native-blob-util'?
-                                    // No, let's just return a Blob but also modify the metadata in the callback scope?
-                                    // Wait, onFileReceived(metadata, blob).
-                                    // The UI does `URL.createObjectURL(blob)`.
-                                    // In React Native, `URL.createObjectURL` might not exist or work.
-                                    // We need to change the UI to use the URI directly.
+            pc.ondatachannel = (event: any) => {
+                const dc = event.channel;
+                dc.onmessage = (msgEvent: any) => {
+                    if (typeof msgEvent.data === 'string') {
+                        try {
+                            const parsed = JSON.parse(msgEvent.data);
+                            if (parsed.type === 'metadata') {
+                                metadata = parsed.data;
+                                log(`📦 RECV metadata: size=${metadata!.fileSize}`);
+                            } else if (parsed.type === 'done' && metadata) {
+                                // Write to file instead of Blob
+                                const ReactNativeBlobUtil = require('react-native-blob-util').default;
+                                const { Buffer } = require('buffer');
+                                const dirs = ReactNativeBlobUtil.fs.dirs;
+                                const filePath = `${dirs.CacheDir}/${metadata.fileName}`;
 
-                                    // Let's look at `ChatScreen.tsx`.
-                                    // It uses `listenForIncomingFiles(..., (metadata, blob) => {`
-                                    // `const blobUrl = URL.createObjectURL(blob);`
+                                // Combine chunks and write
+                                const combinedBuffer = Buffer.concat(receivedChunks.map(ab => Buffer.from(ab)));
+                                const base64 = combinedBuffer.toString('base64');
 
-                                    // Fix: On React Native, we should pass the file URI as the "blob URL".
-                                    // We can't easily change the signature without changing shared code (if we share types).
-                                    // But here we are in mobile-specific file.
+                                ReactNativeBlobUtil.fs.writeFile(filePath, base64, 'base64')
+                                    .then(() => {
+                                        log(`💾 File saved to: ${filePath}`);
+                                        const fileUri = `file://${filePath}`;
+                                        if (metadata) {
+                                            onFileReceived(metadata, fileUri as any);
+                                        }
+                                        endTransfer();
+                                    })
+                                    .catch((err: any) => {
+                                        console.error('File write error:', err);
+                                        endTransfer();
+                                    });
 
-                                    // Hack: Pass the URI as the second argument instead of a Blob?
-                                    // Or pass a Blob that has the URI?
-                                    const fileUri = `file://${filePath}`;
-                                    // We'll pass the URI string as the "blob" argument and cast it in the callback
-                                    onFileReceived(metadata, fileUri as any);
-                                })
-                                .catch(err => console.error('File write error:', err));
-
-                            dc.send(JSON.stringify({ type: 'ack', transferId: parsed.transferId }));
-                            log('✅ RECV sent ACK');
-                            setTimeout(() => { dc.close(); pc.close(); }, 500);
+                                dc.send(JSON.stringify({ type: 'ack', transferId: parsed.transferId }));
+                                log('✅ RECV sent ACK');
+                            }
+                        } catch { /* ignore */ }
+                    } else {
+                        receivedChunks.push(msgEvent.data);
+                        if (metadata && onProgress) {
+                            const received = receivedChunks.reduce((sum: number, c: ArrayBuffer) => sum + c.byteLength, 0);
+                            onProgress(received / metadata.fileSize);
                         }
-                    } catch { /* ignore */ }
-                } else {
-                    receivedChunks.push(msgEvent.data);
-                    if (metadata && onProgress) {
-                        const received = receivedChunks.reduce((sum: number, c: ArrayBuffer) => sum + c.byteLength, 0);
-                        onProgress(received / metadata.fileSize);
                     }
+                };
+            };
+
+            pc.onicecandidate = (event: any) => {
+                if (event.candidate) {
+                    signalChannel.send({
+                        type: 'broadcast',
+                        event: 'signal',
+                        payload: { type: 'ice-candidate', candidate: event.candidate, from: userId, transferId: msg.transferId },
+                    });
                 }
             };
-        };
 
-        pc.onicecandidate = (event: any) => {
-            if (event.candidate) {
-                signalChannel.send({
-                    type: 'broadcast',
-                    event: 'signal',
-                    payload: { type: 'ice-candidate', candidate: event.candidate, from: userId, transferId: msg.transferId },
-                });
-            }
-        };
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
 
-        await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        signalChannel.send({
-            type: 'broadcast',
-            event: 'signal',
-            payload: { type: 'answer', sdp: answer, from: userId, transferId: msg.transferId },
-        });
+            signalChannel.send({
+                type: 'broadcast',
+                event: 'signal',
+                payload: { type: 'answer', sdp: answer, from: userId, transferId: msg.transferId },
+            });
+        } catch (err) {
+            console.error('❌ Error in onSignal (Mobile Receiver):', err);
+        }
     };
 
     const release = acquireChannel(channelName, onSignal);

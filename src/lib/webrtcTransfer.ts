@@ -307,77 +307,124 @@ export function listenForIncomingFiles(
 
     log(`👂 LISTEN start on ${channelName}`);
 
+    const transfers = new Map<string, RTCPeerConnection>();
+
     const onSignal = async (msg: any) => {
-        if (msg.from === userId) return;
-        if (msg.type !== 'offer') return;
+        try {
+            if (msg.from === userId) return;
 
-        log(`📨 RECV got OFFER form ${msg.from}, transferId=${msg.transferId}`);
-
-        const iceServers = await fetchIceServers();
-        const pc = new RTCPeerConnection({ iceServers });
-        const receivedChunks: ArrayBuffer[] = [];
-        let metadata: FileMetadata | null = null;
-
-        // We need to send answers back on the same shared channel
-        // But we don't 'acquire' it again here, we assume the listener IS the one holding it open?
-        // Actually, we should just use the channel instance if we can get it, OR just acquire it momentarily?
-        // But `pc.onicecandidate` needs to send signals.
-        // It's safer to acquire it? No, if we acquire it inside the callback, we increase ref count.
-        // Let's use `channelCache.get(channelName)` which MUST exist because we are in the listener callback.
-
-        const shared = channelCache.get(channelName);
-        if (!shared) {
-            console.error('Channel lost during incoming offer handling');
-            return;
-        }
-        const signalChannel = shared.channel;
-
-        pc.ondatachannel = (event) => {
-            const dc = event.channel;
-            dc.onmessage = (msgEvent) => {
-                if (typeof msgEvent.data === 'string') {
-                    try {
-                        const parsed = JSON.parse(msgEvent.data);
-                        if (parsed.type === 'metadata') {
-                            metadata = parsed.data;
-                            log(`📦 RECV metadata: size=${metadata!.fileSize}`);
-                        } else if (parsed.type === 'done' && metadata) {
-                            const blob = new Blob(receivedChunks);
-                            onFileReceived(metadata, blob);
-                            dc.send(JSON.stringify({ type: 'ack', transferId: parsed.transferId }));
-                            log('✅ RECV sent ACK');
-                            setTimeout(() => { dc.close(); pc.close(); }, 500);
-                        }
-                    } catch { /* ignore */ }
+            // Handle ICE Candidates
+            if (msg.type === 'ice-candidate') {
+                // Check if we have an active transfer for this ID
+                const pc = transfers.get(msg.transferId);
+                if (pc) {
+                    log(`❄️ RECV ICE candidate for ${msg.transferId}`);
+                    await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
                 } else {
-                    receivedChunks.push(msgEvent.data);
-                    if (metadata && onProgress) {
-                        const received = receivedChunks.reduce((sum, c) => sum + c.byteLength, 0);
-                        onProgress(received / metadata.fileSize);
+                    // Determine if this is a "stray" candidate or if we should log it
+                    // It's common to receive candidates before offer processing completes, but waiting is complex.
+                    // For now, if no PC, we drop it (or queue it? queueing is better).
+                    // Simplest fix: Just log drop.
+                    // log(`⚠️ Dropped ICE candidate for unknown transfer ${msg.transferId}`);
+                }
+                return;
+            }
+
+            if (msg.type !== 'offer') return;
+
+            log(`📨 RECV got OFFER form ${msg.from}, transferId=${msg.transferId}`);
+
+            const iceServers = await fetchIceServers();
+            const pc = new RTCPeerConnection({ iceServers });
+            transfers.set(msg.transferId, pc);
+
+            const receivedChunks: ArrayBuffer[] = [];
+            let metadata: FileMetadata | null = null;
+            let cleanupCalled = false;
+
+            const shared = channelCache.get(channelName);
+            if (!shared) {
+                console.error('Channel lost during incoming offer handling');
+                transfers.delete(msg.transferId);
+                return;
+            }
+            const signalChannel = shared.channel;
+
+            // Helper to cleanup
+            const endTransfer = () => {
+                if (cleanupCalled) return;
+                cleanupCalled = true;
+                transfers.delete(msg.transferId);
+                setTimeout(() => {
+                    try { dc?.close(); } catch { }
+                    try { pc.close(); } catch { }
+                }, 1000);
+            };
+
+            let dc: any = null;
+
+            pc.ondatachannel = (event) => {
+                dc = event.channel;
+                dc.onmessage = (msgEvent) => {
+                    if (typeof msgEvent.data === 'string') {
+                        try {
+                            const parsed = JSON.parse(msgEvent.data);
+                            if (parsed.type === 'metadata') {
+                                metadata = parsed.data;
+                                log(`📦 RECV metadata: size=${metadata!.fileSize}`);
+                            } else if (parsed.type === 'done' && metadata) {
+                                const blob = new Blob(receivedChunks);
+                                onFileReceived(metadata, blob);
+                                dc.send(JSON.stringify({ type: 'ack', transferId: parsed.transferId }));
+                                log('✅ RECV sent ACK');
+                                endTransfer();
+                            }
+                        } catch { /* ignore */ }
+                    } else {
+                        receivedChunks.push(msgEvent.data);
+                        if (metadata && onProgress) {
+                            const received = receivedChunks.reduce((sum, c) => sum + c.byteLength, 0);
+                            onProgress(received / metadata.fileSize);
+                        }
                     }
+                };
+            };
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    signalChannel.send({
+                        type: 'broadcast',
+                        event: 'signal',
+                        payload: { type: 'ice-candidate', candidate: event.candidate, from: userId, transferId: msg.transferId },
+                    });
                 }
             };
-        };
 
-        pc.onicecandidate = (event) => {
-            if (event.candidate) {
-                signalChannel.send({
-                    type: 'broadcast',
-                    event: 'signal',
-                    payload: { type: 'ice-candidate', candidate: event.candidate, from: userId, transferId: msg.transferId },
-                });
+            pc.onconnectionstatechange = () => {
+                if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                    log(`❌ Transfer ${msg.transferId} failed/disconnected`);
+                    endTransfer();
+                }
+            };
+
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp as RTCSessionDescriptionInit));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            signalChannel.send({
+                type: 'broadcast',
+                event: 'signal',
+                payload: { type: 'answer', sdp: answer, from: userId, transferId: msg.transferId },
+            });
+            log(`📡 ANSWER sent for ${msg.transferId}`);
+
+        } catch (err) {
+            console.error('❌ Error in onSignal (Receiver):', err);
+            // Ensure we clean up if initial setup fails
+            if (msg.type === 'offer') {
+                transfers.delete(msg.transferId);
             }
-        };
-
-        await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp as RTCSessionDescriptionInit));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        signalChannel.send({
-            type: 'broadcast',
-            event: 'signal',
-            payload: { type: 'answer', sdp: answer, from: userId, transferId: msg.transferId },
-        });
+        }
     };
 
     const release = acquireChannel(channelName, onSignal);
