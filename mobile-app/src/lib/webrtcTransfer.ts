@@ -127,6 +127,7 @@ async function fetchIceServers(): Promise<any[]> {
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const servers = await res.json();
+        log(`🍦 Fetched ${servers.length} ICE servers`);
         return servers;
     } catch (err) {
         console.error('[WebRTC-RN] Failed to fetch TURN credentials:', err);
@@ -284,6 +285,7 @@ export async function sendFileP2P(
 
         pc.onicecandidate = (event: any) => {
             if (event.candidate) {
+                log(`❄️ SEND ICE candidate (${event.candidate.type})`);
                 signalChannel.send({
                     type: 'broadcast',
                     event: 'signal',
@@ -324,6 +326,8 @@ export function listenForIncomingFiles(
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const transfers = new Map<string, any>();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pendingCandidates = new Map<string, any[]>();
 
     const onSignal = async (msg: any) => {
         try {
@@ -334,8 +338,15 @@ export function listenForIncomingFiles(
                 // Check if we have an active transfer for this ID
                 const pc = transfers.get(msg.transferId);
                 if (pc) {
-                    log(`❄️ RECV ICE candidate for ${msg.transferId}`);
+                    log(`❄️ RECV ICE candidate for ${msg.transferId}:`, msg.candidate);
                     await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+                } else {
+                    // Buffer candidate if PC not ready yet (race condition with fetchIceServers)
+                    log(`⏳ Buffering ICE candidate for ${msg.transferId}`);
+                    if (!pendingCandidates.has(msg.transferId)) {
+                        pendingCandidates.set(msg.transferId, []);
+                    }
+                    pendingCandidates.get(msg.transferId)!.push(msg.candidate);
                 }
                 return;
             }
@@ -347,6 +358,17 @@ export function listenForIncomingFiles(
             const iceServers = await fetchIceServers();
             const pc = new RTCPeerConnection({ iceServers });
             transfers.set(msg.transferId, pc);
+
+            // Process buffered candidates
+            if (pendingCandidates.has(msg.transferId)) {
+                const buffered = pendingCandidates.get(msg.transferId)!;
+                log(`Processing ${buffered.length} buffered candidates for ${msg.transferId}`);
+                for (const candidate of buffered) {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                }
+                pendingCandidates.delete(msg.transferId);
+            }
+
             const receivedChunks: ArrayBuffer[] = [];
             let metadata: FileMetadata | null = null;
             let cleanupCalled = false;
