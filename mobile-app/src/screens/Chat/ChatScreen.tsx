@@ -1,14 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Keyboard } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { ChatMessage } from '../../types/schema';
 import { KeyManager, DeviceKey } from '../../lib/encryption';
 import { MessageBubble } from '../../components/chat/MessageBubble';
-import { Send, ArrowLeft } from 'lucide-react-native';
+import { Send, ArrowLeft, Paperclip } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../navigation/types';
+import { usePresence } from '../../hooks/usePresence';
+import { launchImageLibrary } from 'react-native-image-picker';
+import { sendFileP2P, listenForIncomingFiles } from '../../lib/webrtcTransfer';
+import { queueAttachment, getQueuedAttachments, drainQueueForRecipient, setOnQueueDrain } from '../../lib/attachmentQueue';
 
 type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>;
 
@@ -23,7 +27,12 @@ export default function ChatScreen() {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
     const [sending, setSending] = useState(false);
+    const [transferProgress, setTransferProgress] = useState<number | null>(null);
     const flatListRef = useRef<FlatList>(null);
+
+    const isDM = recipientId !== null;
+    const { isUserOnline } = usePresence(family?.id || null, user?.id || null);
+    const isRecipientOnline = recipientId ? isUserOnline(recipientId) : false;
 
     // Multi-device: store ALL device keys for recipient + sender
     const recipientDeviceKeysRef = useRef<DeviceKey[]>([]);
@@ -294,6 +303,109 @@ export default function ChatScreen() {
         );
     };
 
+    // --- ATTACHMENT HANDLING ---
+    const handleAttachmentPick = useCallback(async () => {
+        if (!recipientId || !user?.id || !family?.id) return;
+
+        const result = await launchImageLibrary({
+            mediaType: 'mixed',
+            quality: 0.8,
+        });
+
+        if (result.didCancel || !result.assets?.[0]) return;
+        const asset = result.assets[0];
+        if (!asset.uri || !asset.fileName) return;
+
+        let fileType: 'image' | 'video' | 'audio';
+        if (asset.type?.startsWith('image/')) fileType = 'image';
+        else if (asset.type?.startsWith('video/')) fileType = 'video';
+        else if (asset.type?.startsWith('audio/')) fileType = 'audio';
+        else {
+            Alert.alert('Unsupported', 'Only images, videos, and audio files are supported.');
+            return;
+        }
+
+        const fileSize = asset.fileSize || 0;
+
+        if (isRecipientOnline) {
+            setTransferProgress(0);
+            const success = await sendFileP2P(
+                asset.uri, asset.fileName, fileType, fileSize,
+                user.id, recipientId, family.id,
+                (p: number) => setTransferProgress(p)
+            );
+            setTransferProgress(null);
+
+            if (success) {
+                await supabase.from('chat_messages').insert({
+                    family_id: family.id,
+                    sender_id: user.id,
+                    recipient_id: recipientId,
+                    content: `📎 ${fileType.charAt(0).toUpperCase() + fileType.slice(1)}: ${asset.fileName}`,
+                    attachment_type: fileType,
+                    attachment_name: asset.fileName,
+                    attachment_size: fileSize,
+                    read_by: [user.id]
+                });
+            } else {
+                Alert.alert('Transfer Failed', 'File queued for when recipient comes online.');
+                queueAttachment({
+                    fileUri: asset.uri, fileName: asset.fileName, fileType,
+                    fileSize, recipientId, familyId: family.id, senderId: user.id
+                });
+            }
+        } else {
+            queueAttachment({
+                fileUri: asset.uri, fileName: asset.fileName, fileType,
+                fileSize, recipientId, familyId: family.id, senderId: user.id
+            });
+            Alert.alert('Offline', 'Recipient is offline. File queued for auto-send.');
+        }
+    }, [recipientId, isRecipientOnline, family?.id, user?.id]);
+
+    // Listen for incoming files via WebRTC
+    useEffect(() => {
+        if (!recipientId || !family?.id || !user?.id) return;
+
+        const cleanup = listenForIncomingFiles(
+            user.id, family.id, recipientId,
+            async (metadata, blob) => {
+                const blobUrl = URL.createObjectURL(blob);
+                setMessages(prev => prev.map(m => {
+                    if (m.attachment_name === metadata.fileName &&
+                        m.sender_id === metadata.senderId &&
+                        !m.attachment_blob_url) {
+                        return { ...m, attachment_blob_url: blobUrl };
+                    }
+                    return m;
+                }));
+            },
+            (p) => setTransferProgress(p)
+        );
+
+        return cleanup;
+    }, [recipientId, family?.id, user?.id]);
+
+    // Drain queue when recipient comes online
+    useEffect(() => {
+        if (!recipientId || !isRecipientOnline || !family?.id || !user?.id) return;
+
+        setOnQueueDrain(async (attachment) => {
+            setTransferProgress(0);
+            await sendFileP2P(
+                attachment.fileUri, attachment.fileName, attachment.fileType,
+                attachment.fileSize,
+                user.id, recipientId, family.id,
+                (p: number) => setTransferProgress(p)
+            );
+            setTransferProgress(null);
+        });
+
+        const queued = getQueuedAttachments(recipientId);
+        if (queued.length > 0) {
+            drainQueueForRecipient(recipientId);
+        }
+    }, [recipientId, isRecipientOnline, family?.id, user?.id]);
     return (
         <SafeAreaView style={styles.container}>
             <KeyboardAvoidingView
@@ -305,9 +417,27 @@ export default function ChatScreen() {
                     <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                         <ArrowLeft color="#0f172a" size={24} />
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>{name}</Text>
+                    <View style={styles.headerCenter}>
+                        <Text style={styles.headerTitle}>{name}</Text>
+                        {isDM && (
+                            <View style={styles.statusRow}>
+                                <View style={[styles.statusDot, { backgroundColor: isRecipientOnline ? '#22c55e' : '#94a3b8' }]} />
+                                <Text style={[styles.statusText, { color: isRecipientOnline ? '#22c55e' : '#94a3b8' }]}>
+                                    {isRecipientOnline ? 'Online' : 'Offline'}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
                     <View style={{ width: 24 }} />
                 </View>
+
+                {/* Transfer Progress Bar */}
+                {transferProgress !== null && (
+                    <View style={styles.progressContainer}>
+                        <View style={[styles.progressBar, { width: `${Math.round(transferProgress * 100)}%` }]} />
+                        <Text style={styles.progressText}>{Math.round(transferProgress * 100)}%</Text>
+                    </View>
+                )}
 
                 <FlatList
                     ref={flatListRef}
@@ -328,6 +458,14 @@ export default function ChatScreen() {
                 />
 
                 <View style={styles.inputContainer}>
+                    {isDM && (
+                        <TouchableOpacity
+                            style={styles.attachButton}
+                            onPress={handleAttachmentPick}
+                        >
+                            <Paperclip color="#64748b" size={22} />
+                        </TouchableOpacity>
+                    )}
                     <TextInput
                         style={styles.input}
                         value={inputText}
@@ -364,6 +502,9 @@ const styles = StyleSheet.create({
         borderBottomColor: '#f1f5f9',
         backgroundColor: 'white',
     },
+    headerCenter: {
+        alignItems: 'center',
+    },
     backButton: {
         padding: 4,
     },
@@ -371,6 +512,39 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: 'bold',
         color: '#0f172a',
+    },
+    statusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 2,
+    },
+    statusDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        marginRight: 4,
+    },
+    statusText: {
+        fontSize: 11,
+        fontWeight: '500',
+    },
+    progressContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 4,
+        backgroundColor: '#eef2ff',
+    },
+    progressBar: {
+        height: 4,
+        backgroundColor: '#6366f1',
+        borderRadius: 2,
+    },
+    progressText: {
+        fontSize: 11,
+        color: '#6366f1',
+        marginLeft: 8,
+        fontWeight: '600',
     },
     listContent: {
         padding: 16,
@@ -383,6 +557,10 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: '#f1f5f9',
         backgroundColor: 'white',
+    },
+    attachButton: {
+        padding: 8,
+        marginRight: 4,
     },
     input: {
         flex: 1,

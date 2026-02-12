@@ -6,6 +6,7 @@ import { ChatList } from '../components/chat/ChatList';
 import { ChatWindow } from '../components/chat/ChatWindow';
 import { ArrowLeft, MessageSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { usePresence } from '../hooks/usePresence';
 
 export default function Chat() {
     const { profile, family } = useAuth(); // Destructure family
@@ -15,6 +16,9 @@ export default function Chat() {
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [otherParents, setOtherParents] = useState<Profile[]>([]);
 
+    const familyId = family?.id || profile?.family_id || '';
+    const { isUserOnline } = usePresence(familyId || null, profile?.id || null);
+
     useEffect(() => {
         if (profile?.role !== 'parent') {
             navigate('/');
@@ -22,9 +26,9 @@ export default function Chat() {
     }, [profile, navigate]);
 
     useEffect(() => {
-        const familyId = family?.id || profile?.family_id;
+        const fId = family?.id || profile?.family_id;
 
-        if (!profile || !familyId) {
+        if (!profile || !fId) {
             return;
         }
 
@@ -34,7 +38,7 @@ export default function Chat() {
             const { data: members, error } = await supabase
                 .from('family_members')
                 .select('role, profile:profiles(*)')
-                .eq('family_id', familyId);
+                .eq('family_id', fId);
 
             if (error) {
                 console.error("Error fetching family members:", error);
@@ -47,6 +51,7 @@ export default function Chat() {
             }
 
             // Map to profile objects, using the ROLE from family_members
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const allProfiles = members.map((m: any) => ({
                 ...m.profile,
                 role: m.role // Use the specific family role (e.g. parent/child)
@@ -71,13 +76,12 @@ export default function Chat() {
 
     if (!profile) return null;
 
-    // View Logic
-    const familyId = family?.id || profile.family_id || '';
-
     if (activeChatId !== null) {
         // CHAT DETAIL VIEW (Fixed Full Screen)
         const recipientIdForWindow = activeChatId === 'GROUP' ? null : activeChatId;
         const chatTitle = activeChatId === 'GROUP' ? 'Family Board' : otherParents.find(p => p.id === activeChatId)?.display_name || 'Chat';
+        const isDM = activeChatId !== 'GROUP';
+        const recipientOnline = isDM ? isUserOnline(activeChatId) : false;
 
         return (
             <div className="fixed inset-0 z-[49] bg-slate-50 flex flex-col pt-[env(safe-area-inset-top)]">
@@ -86,7 +90,15 @@ export default function Chat() {
                     <button onClick={handleBackToList} className="p-2 -ml-2 mr-2 text-slate-600 hover:bg-slate-100 rounded-full">
                         <ArrowLeft size={24} />
                     </button>
-                    <h2 className="font-bold text-lg text-slate-800">{chatTitle}</h2>
+                    <div className="flex flex-col">
+                        <h2 className="font-bold text-lg text-slate-800 leading-tight">{chatTitle}</h2>
+                        {isDM && (
+                            <span className={`text-xs flex items-center gap-1 ${recipientOnline ? 'text-green-500' : 'text-slate-400'}`}>
+                                <span className={`inline-block w-2 h-2 rounded-full ${recipientOnline ? 'bg-green-500' : 'bg-slate-300'}`}></span>
+                                {recipientOnline ? 'Online' : 'Offline'}
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 {/* Chat Window takes remaining space */}
@@ -96,6 +108,7 @@ export default function Chat() {
                         recipientId={recipientIdForWindow}
                         currentProfile={profile}
                         familyId={familyId}
+                        isRecipientOnline={recipientOnline}
                     />
                 </div>
             </div>

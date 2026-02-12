@@ -1039,3 +1039,11 @@ ALTER TABLE chat_messages
 ALTER TABLE chat_messages
     ADD COLUMN IF NOT EXISTS sender_device_id TEXT DEFAULT NULL;
 
+-- 14. P2P ATTACHMENT METADATA
+-- Only metadata is stored here — actual file is sent directly P2P via WebRTC
+ALTER TABLE chat_messages
+    ADD COLUMN IF NOT EXISTS attachment_type TEXT DEFAULT NULL
+        CHECK (attachment_type IN ('image', 'video', 'audio')),
+    ADD COLUMN IF NOT EXISTS attachment_name TEXT DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS attachment_size BIGINT DEFAULT NULL;
+

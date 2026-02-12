@@ -1,21 +1,27 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { ChatMessage, Profile } from '../../types';
 import { MessageBubble } from './MessageBubble';
-import { Send } from 'lucide-react';
+import { Send, Paperclip } from 'lucide-react';
 import { KeyManager, type DeviceKey } from '../../lib/encryption';
+import { sendFileP2P, listenForIncomingFiles } from '../../lib/webrtcTransfer';
+import { queueAttachment, getQueuedAttachments, drainQueueForRecipient, setOnQueueDrain } from '../../lib/attachmentQueue';
 
 interface ChatWindowProps {
     recipientId: string | null; // null = group
     currentProfile: Profile;
     familyId: string;
+    isRecipientOnline?: boolean;
 }
 
-export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindowProps) {
+export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientOnline }: ChatWindowProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [newMessage, setNewMessage] = useState('');
     const [loading, setLoading] = useState(true);
+    const [transferProgress, setTransferProgress] = useState<number | null>(null);
+    const [showOfflineTooltip, setShowOfflineTooltip] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Multi-device: store ALL device keys for the recipient + sender
     const recipientDeviceKeysRef = useRef<DeviceKey[]>([]);
@@ -324,8 +330,138 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
         }
     };
 
+    // --- ATTACHMENT HANDLING ---
+    const handleAttachmentClick = () => {
+        if (!recipientId) return; // Only for DMs
+        if (!isRecipientOnline) {
+            setShowOfflineTooltip(true);
+            setTimeout(() => setShowOfflineTooltip(false), 3000);
+        }
+        fileInputRef.current?.click();
+    };
+
+    const handleFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !recipientId) return;
+
+        // Reset input
+        if (fileInputRef.current) fileInputRef.current.value = '';
+
+        // Determine file type
+        let fileType: 'image' | 'video' | 'audio';
+        if (file.type.startsWith('image/')) fileType = 'image';
+        else if (file.type.startsWith('video/')) fileType = 'video';
+        else if (file.type.startsWith('audio/')) fileType = 'audio';
+        else {
+            alert('Only images, videos, and audio files are supported.');
+            return;
+        }
+
+        if (isRecipientOnline) {
+            // Send directly via WebRTC
+            setTransferProgress(0);
+            const success = await sendFileP2P(
+                file, file.name, fileType,
+                currentProfile.id, recipientId, familyId,
+                (p) => setTransferProgress(p)
+            );
+            setTransferProgress(null);
+
+            if (success) {
+                // Insert metadata message into DB
+                const blobUrl = URL.createObjectURL(file);
+                const { data } = await supabase.from('chat_messages').insert({
+                    family_id: familyId,
+                    sender_id: currentProfile.id,
+                    recipient_id: recipientId,
+                    content: `📎 ${fileType.charAt(0).toUpperCase() + fileType.slice(1)}: ${file.name}`,
+                    attachment_type: fileType,
+                    attachment_name: file.name,
+                    attachment_size: file.size,
+                    read_by: [currentProfile.id]
+                }).select().single();
+
+                if (data) {
+                    setMessages(prev => [...prev, { ...data, attachment_blob_url: blobUrl, sender: currentProfile }]);
+                }
+            } else {
+                alert('File transfer failed. The file has been queued for retry.');
+                queueAttachment({
+                    file, fileName: file.name, fileType,
+                    recipientId, familyId, senderId: currentProfile.id
+                });
+            }
+        } else {
+            // Queue for later
+            queueAttachment({
+                file, fileName: file.name, fileType,
+                recipientId, familyId, senderId: currentProfile.id
+            });
+            setShowOfflineTooltip(true);
+            setTimeout(() => setShowOfflineTooltip(false), 3000);
+        }
+    }, [recipientId, isRecipientOnline, familyId, currentProfile]);
+
+    // Listen for incoming files via WebRTC
+    useEffect(() => {
+        if (!recipientId || !familyId) return;
+
+        const cleanup = listenForIncomingFiles(
+            currentProfile.id,
+            familyId,
+            recipientId,
+            async (metadata, blob) => {
+                const blobUrl = URL.createObjectURL(blob);
+                // The sender already inserted the DB record; we just attach the blob locally
+                setMessages(prev => prev.map(m => {
+                    if (m.attachment_name === metadata.fileName &&
+                        m.sender_id === metadata.senderId &&
+                        !m.attachment_blob_url) {
+                        return { ...m, attachment_blob_url: blobUrl };
+                    }
+                    return m;
+                }));
+            },
+            (p) => setTransferProgress(p)
+        );
+
+        return cleanup;
+    }, [recipientId, familyId, currentProfile.id]);
+
+    // Drain queue when recipient comes online
+    useEffect(() => {
+        if (!recipientId || !isRecipientOnline) return;
+
+        setOnQueueDrain(async (attachment) => {
+            setTransferProgress(0);
+            await sendFileP2P(
+                attachment.file, attachment.fileName, attachment.fileType,
+                currentProfile.id, recipientId, familyId,
+                (p) => setTransferProgress(p)
+            );
+            setTransferProgress(null);
+        });
+
+        const queued = getQueuedAttachments(recipientId);
+        if (queued.length > 0) {
+            drainQueueForRecipient(recipientId);
+        }
+    }, [recipientId, isRecipientOnline, familyId, currentProfile.id]);
+
+    const isDM = recipientId !== null;
+
     return (
         <div className="flex flex-col overflow-hidden bg-slate-50 h-[calc(100%-100px)]">
+            {/* Transfer Progress Bar */}
+            {transferProgress !== null && (
+                <div className="bg-indigo-50 px-4 py-1 text-xs text-indigo-600 flex items-center gap-2">
+                    <div className="flex-1 bg-indigo-100 rounded-full h-1.5">
+                        <div className="bg-indigo-500 h-1.5 rounded-full transition-all" style={{ width: `${Math.round(transferProgress * 100)}%` }}></div>
+                    </div>
+                    <span>{Math.round(transferProgress * 100)}%</span>
+                </div>
+            )}
+
             {/* Messages Area */}
             <div className={`flex-1 overflow-y-auto p-4 bg-slate-50 ${messages.length > 0 ? 'space-y-4' : ''}`}>
                 {loading ? (
@@ -348,7 +484,33 @@ export function ChatWindow({ recipientId, currentProfile, familyId }: ChatWindow
             </div>
 
             {/* Input Area */}
-            <form onSubmit={handleSend} className="p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white border-t border-slate-200 flex gap-2 shrink-0">
+            <form onSubmit={handleSend} className="p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white border-t border-slate-200 flex gap-2 shrink-0 relative">
+                {/* Offline Tooltip */}
+                {showOfflineTooltip && (
+                    <div className="absolute -top-10 left-4 bg-slate-800 text-white text-xs px-3 py-1.5 rounded-lg shadow-lg">
+                        Recipient is offline. File queued for auto-send.
+                    </div>
+                )}
+
+                {/* Attachment Button (DM only) */}
+                {isDM && (
+                    <button
+                        type="button"
+                        onClick={handleAttachmentClick}
+                        className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+                        title="Send attachment"
+                    >
+                        <Paperclip size={20} />
+                    </button>
+                )}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,video/*,audio/*"
+                    className="hidden"
+                    onChange={handleFileSelected}
+                />
+
                 <input
                     type="text"
                     value={newMessage}

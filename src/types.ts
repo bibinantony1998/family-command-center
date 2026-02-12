@@ -85,6 +85,11 @@ export interface ChatMessage {
     nonce?: string;
     encrypted_keys?: Record<string, string> | null; // { deviceId: encryptedSymKey }
     sender_device_id?: string | null;
+    // P2P Attachment metadata (actual file sent via WebRTC, not stored)
+    attachment_type?: 'image' | 'video' | 'audio' | null;
+    attachment_name?: string | null;
+    attachment_size?: number | null;
+    attachment_blob_url?: string | null; // Temporary in-session blob URL (not persisted to DB)
     created_at: string;
     // Join
     sender?: Profile;
