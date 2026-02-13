@@ -66,6 +66,10 @@ export interface ChatMessage {
     attachment_size?: number | null;
     attachment_blob_url?: string | null; // Temporary in-session blob URL (not persisted to DB)
     created_at: string;
+    sender?: {
+        display_name: string;
+        avatar_url: string | null;
+    };
 }
 
 export interface UserDevice {

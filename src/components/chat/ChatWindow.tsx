@@ -475,10 +475,13 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
             setTransferProgress(0);
             setTransferError(null);
 
+            // Generate message ID first
+            const messageId = crypto.randomUUID();
+
             const { success, error } = await sendFileP2P(
                 file, fileName, fileType,
                 currentProfile.id, recipientId, familyId,
-                undefined, // messageId
+                messageId,
                 (p) => setTransferProgress(p),
                 ac.signal
             );
@@ -490,6 +493,7 @@ export function ChatWindow({ recipientId, currentProfile, familyId, isRecipientO
             if (success) {
                 // Insert message into DB
                 const { data } = await supabase.from('chat_messages').insert({
+                    id: messageId, // Use the same ID
                     family_id: familyId,
                     sender_id: currentProfile.id,
                     recipient_id: recipientId,

@@ -448,10 +448,12 @@ export default function ChatScreen() {
                     attachment_name: fileName,
                     attachment_size: fileSize || 0,
                     attachment_blob_url: uri, // Local URI for immediate display
+                    is_read: true,
+                    read_by: [user.id],
                     sender: {
                         display_name: 'You',
                         avatar_url: null
-                    } as any
+                    }
                 };
 
                 // ... lines 460-580 ...
@@ -480,7 +482,7 @@ export default function ChatScreen() {
                 // Assuming updated signature: ..., messageId, onProgress)
 
                 const success = await sendFileP2P(
-                    uri, fileName, fileType, fileSize,
+                    uri, fileName, fileType, fileSize || 0,
                     user.id, recipientId, family.id,
                     messageId, // New argument
                     (p) => setTransferProgress(p)
@@ -554,7 +556,8 @@ export default function ChatScreen() {
 
                     // Retry logic for race condition
                     let attempts = 0;
-                    const maxAttempts = 20; // Increased to 10s
+                    const maxAttempts = 60; // 30 seconds (500ms * 60)
+
                     const attemptLoop = setInterval(() => {
                         attempts++;
                         if (attempts > maxAttempts) {
@@ -563,14 +566,27 @@ export default function ChatScreen() {
                         }
 
                         setMessages(prev => {
-                            const foundIndex = prev.findIndex(m =>
-                                m.attachment_name === metadata.fileName &&
-                                m.sender_id === metadata.senderId &&
-                                !m.attachment_blob_url
-                            );
+                            let foundIndex = -1;
+
+                            if (metadata.messageId) {
+                                foundIndex = prev.findIndex(m => m.id === metadata.messageId);
+                            } else {
+                                // Legacy fallback
+                                foundIndex = prev.findIndex(m =>
+                                    m.attachment_name === metadata.fileName &&
+                                    m.sender_id === metadata.senderId &&
+                                    !m.attachment_blob_url
+                                );
+                            }
 
                             if (foundIndex !== -1) {
-                                console.log(`[MobileAttachment] Found msg match, attaching.`);
+                                console.log(`[MobileAttachment] Found msg match (idx=${foundIndex}). Attaching.`);
+                                // Check if already attached to avoid unnecessary updates
+                                if (prev[foundIndex].attachment_blob_url) {
+                                    clearInterval(attemptLoop);
+                                    return prev;
+                                }
+
                                 const newMessages = [...prev];
                                 newMessages[foundIndex] = { ...newMessages[foundIndex], attachment_blob_url: fileUri };
                                 clearInterval(attemptLoop);

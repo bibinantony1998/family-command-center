@@ -30,13 +30,31 @@ export const MessageBubble = ({ message, isOwn, showSenderName, onLongPress }: M
     const hasAttachment = !!message.attachment_type;
     const hasBlobUrl = !!message.attachment_blob_url;
 
+    const [isRecent, setIsRecent] = React.useState(false);
+
+    React.useEffect(() => {
+        if (message.attachment_type && !message.attachment_blob_url) {
+            const checkTime = () => {
+                const diff = Date.now() - new Date(message.created_at).getTime();
+                setIsRecent(diff < 60000); // 1 minute threshold
+            };
+            checkTime();
+            const interval = setInterval(checkTime, 5000);
+            return () => clearInterval(interval);
+        }
+    }, [message.created_at, message.attachment_type, message.attachment_blob_url]);
+
     const renderAttachment = () => {
         if (!hasAttachment) return null;
 
         if (!hasBlobUrl) {
             return (
                 <Text style={[expiredStyles.text, isOwn ? expiredStyles.ownText : expiredStyles.otherText]}>
-                    📎 {message.attachment_type?.charAt(0).toUpperCase()}{message.attachment_type?.slice(1)} (expired)
+                    {isRecent ? (
+                        <>⏳ Transferring {message.attachment_type}...</>
+                    ) : (
+                        <>📎 {message.attachment_type?.charAt(0).toUpperCase()}{message.attachment_type?.slice(1)} (expired)</>
+                    )}
                 </Text>
             );
         }
