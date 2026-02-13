@@ -254,7 +254,7 @@ export async function sendFileP2P(
         dataChannel.onopen = async () => {
             log('📡 DataChannel OPEN — sending file...');
             resetTimeout();
-            const metadata: FileMetadata = { fileName, fileType, fileSize: file.size, senderId, transferId };
+            const metadata: FileMetadata = { fileName, fileType, fileSize: file.size, senderId, transferId, messageId };
             dataChannel.send(JSON.stringify({ type: 'metadata', data: metadata }));
 
             const arrayBuffer = await file.arrayBuffer();
