@@ -10,13 +10,18 @@ interface MessageBubbleProps {
 }
 
 export function MessageBubble({ message, isOwn, onDelete }: MessageBubbleProps) {
-    const [isRecent, setIsRecent] = useState(false);
+    const [isRecent, setIsRecent] = useState(() => {
+        const createdMs = new Date(message.created_at).getTime();
+        const diff = Date.now() - createdMs;
+        return diff < 60000;
+    });
 
     useEffect(() => {
         // Only relevant if attachment is pending
         if (message.attachment_type && !message.attachment_blob_url) {
             const checkTime = () => {
-                const diff = Date.now() - new Date(message.created_at).getTime();
+                const createdMs = new Date(message.created_at).getTime();
+                const diff = Date.now() - createdMs;
                 setIsRecent(diff < 60000); // 1 minute threshold
             };
             checkTime();

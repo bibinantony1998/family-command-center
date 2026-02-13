@@ -30,19 +30,27 @@ export const MessageBubble = ({ message, isOwn, showSenderName, onLongPress }: M
     const hasAttachment = !!message.attachment_type;
     const hasBlobUrl = !!message.attachment_blob_url;
 
-    const [isRecent, setIsRecent] = React.useState(false);
+    const [isRecent, setIsRecent] = React.useState(() => {
+        const createdMs = new Date(message.created_at).getTime();
+        const diff = Date.now() - createdMs;
+        // console.log(`[MessageBubble] Init ${message.id} created=${message.created_at} diff=${diff}`);
+        return diff < 60000;
+    });
 
     React.useEffect(() => {
         if (message.attachment_type && !message.attachment_blob_url) {
             const checkTime = () => {
-                const diff = Date.now() - new Date(message.created_at).getTime();
-                setIsRecent(diff < 60000); // 1 minute threshold
+                const createdMs = new Date(message.created_at).getTime();
+                const diff = Date.now() - createdMs;
+                const isStillRecent = diff < 60000;
+                // console.log(`[MessageBubble] Check ${message.id} diff=${diff} recent=${isStillRecent}`);
+                setIsRecent(isStillRecent);
             };
             checkTime();
             const interval = setInterval(checkTime, 5000);
             return () => clearInterval(interval);
         }
-    }, [message.created_at, message.attachment_type, message.attachment_blob_url]);
+    }, [message.created_at, message.attachment_type, message.attachment_blob_url, message.id]);
 
     const renderAttachment = () => {
         if (!hasAttachment) return null;
