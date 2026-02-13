@@ -9,36 +9,46 @@ import { supabase } from './src/lib/supabase';
 function App() {
   useEffect(() => {
     // Helper to parse URL and set session
-    const handleUrl = (url: string) => {
+    // Helper to parse URL and set session
+    const handleUrl = async (url: string) => {
       console.log('Deep link received:', url);
 
-      // Extract tokens from URL (hash fragment for implicit flow)
-      // Format: ...#access_token=...&refresh_token=...&...
-      const hashIndex = url.indexOf('#');
-      if (hashIndex !== -1) {
-        const hash = url.substring(hashIndex + 1);
-        const params = new URLSearchParams(hash);
-        const accessToken = params.get('access_token');
-        const refreshToken = params.get('refresh_token');
+      try {
+        // Handle PKCE flow (code in query params) - STANDARD FOR SUPABASE MOBILE
+        if (url.includes('code=')) {
+          const params = new URLSearchParams(url.split('?')[1]);
+          const code = params.get('code');
+          if (code) {
+            console.log('Exchanging code for session...');
+            const { error } = await supabase.auth.exchangeCodeForSession(code);
+            if (error) console.error('Error exchanging code:', error);
+            else console.log('Session established via PKCE code.');
+            return;
+          }
+        }
 
-        if (accessToken && refreshToken) {
-          console.log('Setting session from URL...');
-          supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          }).then(({ error }) => {
-            if (error) console.error('Error setting session:', error);
-            else console.log('Session set successfully.');
-          });
-        } else {
-          console.log('No tokens found in URL hash');
+        // Handle Implicit flow (tokens in hash) - LEGACY / WEB
+        // Format: ...#access_token=...&refresh_token=...&...
+        const hashIndex = url.indexOf('#');
+        if (hashIndex !== -1) {
+          const hash = url.substring(hashIndex + 1);
+          const params = new URLSearchParams(hash);
+          const accessToken = params.get('access_token');
+          const refreshToken = params.get('refresh_token');
+
+          if (accessToken && refreshToken) {
+            console.log('Setting session from URL hash...');
+            supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            }).then(({ error }) => {
+              if (error) console.error('Error setting session:', error);
+              else console.log('Session set successfully.');
+            });
+          }
         }
-      } else {
-        // Handle code flow if query params are used instead of hash
-        const queryIndex = url.indexOf('?');
-        if (queryIndex !== -1) {
-          supabase.auth.getSession();
-        }
+      } catch (e) {
+        console.error('Error handling URL:', e);
       }
     };
 
