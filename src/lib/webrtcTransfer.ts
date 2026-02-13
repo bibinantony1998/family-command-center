@@ -111,6 +111,7 @@ interface FileMetadata {
     fileSize: number;
     senderId: string;
     transferId: string;
+    messageId?: string; // New field for pre-generated Message ID
 }
 
 type TransferProgressCallback = (progress: number) => void;
@@ -149,6 +150,7 @@ export async function sendFileP2P(
     senderId: string,
     recipientId: string,
     familyId: string,
+    messageId?: string, // Added optional messageId support
     onProgress?: TransferProgressCallback,
     abortSignal?: AbortSignal
 ): Promise<{ success: boolean; error?: string }> {

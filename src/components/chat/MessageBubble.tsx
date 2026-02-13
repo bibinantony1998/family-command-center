@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import type { ChatMessage } from '../../types';
 import { cn } from '../../lib/utils';
 import { CheckCheck, Clock, Trash2, Download } from 'lucide-react';
@@ -9,6 +10,21 @@ interface MessageBubbleProps {
 }
 
 export function MessageBubble({ message, isOwn, onDelete }: MessageBubbleProps) {
+    const [isRecent, setIsRecent] = useState(false);
+
+    useEffect(() => {
+        // Only relevant if attachment is pending
+        if (message.attachment_type && !message.attachment_blob_url) {
+            const checkTime = () => {
+                const diff = Date.now() - new Date(message.created_at).getTime();
+                setIsRecent(diff < 60000); // 1 minute threshold
+            };
+            checkTime();
+            const interval = setInterval(checkTime, 5000);
+            return () => clearInterval(interval);
+        }
+    }, [message.created_at, message.attachment_type, message.attachment_blob_url]);
+
     const getStatusIcon = () => {
         if (!message.id) return <Clock size={12} className="text-indigo-200" />;
 
@@ -28,14 +44,18 @@ export function MessageBubble({ message, isOwn, onDelete }: MessageBubbleProps) 
     const renderAttachment = () => {
         if (!hasAttachment) return null;
 
-        // Expired attachment (no blob URL means the file was never received or page was refreshed)
+        // Expired or Transferring attachment
         if (!hasBlobUrl) {
             return (
                 <div className={cn(
                     "mt-2 pt-2 border-t text-xs flex items-center gap-1",
                     isOwn ? "border-indigo-400/30 text-indigo-200" : "border-slate-200 text-slate-400"
                 )}>
-                    📎 {message.attachment_type?.charAt(0).toUpperCase()}{message.attachment_type?.slice(1)} (expired)
+                    {isRecent ? (
+                        <>⏳ Transferring {message.attachment_type}...</>
+                    ) : (
+                        <>📎 {message.attachment_type?.charAt(0).toUpperCase()}{message.attachment_type?.slice(1)} (content not available)</>
+                    )}
                 </div>
             );
         }

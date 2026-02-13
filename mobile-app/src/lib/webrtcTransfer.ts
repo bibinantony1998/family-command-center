@@ -108,10 +108,11 @@ interface FileMetadata {
     fileSize: number;
     senderId: string;
     transferId: string;
+    messageId?: string; // New field for pre-generated Message ID
 }
 
 type TransferProgressCallback = (progress: number) => void;
-type FileReceivedCallback = (metadata: FileMetadata, blob: Blob) => void;
+type FileReceivedCallback = (metadata: FileMetadata, fileUri: string) => void;
 
 async function fetchIceServers(): Promise<any[]> {
     const fallback = [{ urls: 'stun:stun.l.google.com:19302' }];
@@ -122,12 +123,13 @@ async function fetchIceServers(): Promise<any[]> {
     }
 
     try {
+        log(`🍦 Fetching ICE servers for app: ${METERED_APP_NAME}`);
         const res = await fetch(
             `https://${METERED_APP_NAME}.metered.live/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const servers = await res.json();
-        log(`🍦 Fetched ${servers.length} ICE servers`);
+        log(`🍦 Fetched ${servers.length} ICE servers. Example: ${JSON.stringify(servers[0])}`);
         return servers;
     } catch (err) {
         console.error('[WebRTC-RN] Failed to fetch TURN credentials:', err);
@@ -147,6 +149,7 @@ export async function sendFileP2P(
     senderId: string,
     recipientId: string,
     familyId: string,
+    messageId: string, // New arg
     onProgress?: TransferProgressCallback,
     abortSignal?: AbortSignal
 ): Promise<boolean> {
@@ -209,7 +212,7 @@ export async function sendFileP2P(
                 log('❌ Transfer TIMED OUT due to inactivity');
                 cleanup();
                 resolve(false);
-            }, 10000); // 10s inactivity
+            }, 30000); // 30s inactivity
         };
 
         // Initial setup timeout
@@ -257,6 +260,8 @@ export async function sendFileP2P(
             log(`🔗 Connection state: ${pc.connectionState}`);
             resetTimeout();
             if (pc.connectionState === 'failed') {
+                log('❌ Connection failed. ICE Connection State:', pc.iceConnectionState);
+                log('❌ Signaling State:', pc.signalingState);
                 cleanup();
                 resolve(false);
             }
@@ -291,7 +296,12 @@ export async function sendFileP2P(
             }
 
             log(`✅ All chunks sent`);
+
+            // Give the receiver a moment to process the last binary chunk
+            await new Promise(r => setTimeout(r, 100));
+
             dataChannel.send(JSON.stringify({ type: 'done', transferId }));
+            resetTimeout(); // Reset again after done signal to wait for ACK
         };
 
         dataChannel.onmessage = (event: any) => {
@@ -312,12 +322,15 @@ export async function sendFileP2P(
 
         pc.onicecandidate = (event: any) => {
             if (event.candidate) {
-                log(`❄️ SEND ICE candidate (${event.candidate.type})`);
+                // RTCIceCandidate in RN might not have 'type', use candidate string or generic log
+                log(`❄️ SEND ICE candidate`);
                 signalChannel.send({
                     type: 'broadcast',
                     event: 'signal',
                     payload: { type: 'ice-candidate', candidate: event.candidate, from: senderId, transferId },
                 });
+            } else {
+                log('❄️ End of candidates (null)');
             }
         };
 
@@ -358,7 +371,11 @@ export function listenForIncomingFiles(
 
     const onSignal = async (msg: any) => {
         try {
-            if (msg.from === userId) return;
+            // Strict check: Ignore own messages to prevent feedback loops
+            if (msg.from === userId) {
+                // log(`Ignoring own signal from ${msg.from}`);
+                return;
+            }
 
             // Handle ICE Candidates
             if (msg.type === 'ice-candidate') {
@@ -390,12 +407,16 @@ export function listenForIncomingFiles(
                 // Process buffered candidates
                 if (pendingCandidates.has(msg.transferId)) {
                     const buffered = pendingCandidates.get(msg.transferId)!;
-                    log(`Processing ${buffered.length} buffered candidates for ${msg.transferId}`);
-                    for (const candidate of buffered) {
-                        try {
-                            await pc.addIceCandidate(new RTCIceCandidate(candidate));
-                        } catch (e) {
-                            console.warn(`Failed to add buffered candidate:`, e);
+                    if (buffered && buffered.length > 0) {
+                        log(`Processing ${buffered.length} buffered candidates for ${msg.transferId}`);
+                        for (const candidate of buffered) {
+                            try {
+                                if (candidate) {
+                                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                                }
+                            } catch (e) {
+                                console.warn(`Failed to add buffered candidate:`, e);
+                            }
                         }
                     }
                     pendingCandidates.delete(msg.transferId);
@@ -493,7 +514,7 @@ export function listenForIncomingFiles(
                                     log(`💾 File saved to: ${filePath}`);
                                     if (onFileReceived) {
                                         // Run on next tick
-                                        setTimeout(() => onFileReceived(metadata!, fileUri as any), 0);
+                                        setTimeout(() => onFileReceived(metadata!, fileUri), 0);
                                     }
 
                                     endTransfer();

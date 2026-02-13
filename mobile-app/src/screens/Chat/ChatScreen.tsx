@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import QuickCrypto from 'react-native-quick-crypto';
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Keyboard, Modal, Image } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -429,50 +430,102 @@ export default function ChatScreen() {
             setTransferStatus('sending');
             setTransferProgress(0);
 
+            let messageId = '';
             try {
+                // 1. Generate Message ID locally
+                // Use QuickCrypto for UUID v4
+                messageId = QuickCrypto.randomUUID();
+
+                // 2. Optimistic UI: Show message immediately with status 'sending'
+                const optimisticMessage: ChatMessage = {
+                    id: messageId,
+                    family_id: family.id,
+                    sender_id: user.id,
+                    recipient_id: recipientId,
+                    content: `📎 ${fileType.charAt(0).toUpperCase() + fileType.slice(1)}: ${fileName}`,
+                    created_at: new Date().toISOString(),
+                    attachment_type: fileType,
+                    attachment_name: fileName,
+                    attachment_size: fileSize || 0,
+                    attachment_blob_url: uri, // Local URI for immediate display
+                    sender: {
+                        display_name: 'You',
+                        avatar_url: null
+                    } as any
+                };
+
+                // ... lines 460-580 ...
+
+                setOnQueueDrain(async (attachment) => {
+                    setTransferProgress(0);
+                    const offlineMessageId = QuickCrypto.randomUUID(); // Generate ID for offline queue item
+                    await sendFileP2P(
+                        attachment.fileUri, attachment.fileName, attachment.fileType,
+                        attachment.fileSize,
+                        user.id, recipientId, family.id,
+                        offlineMessageId, // Pass generated ID
+                        (p: number) => setTransferProgress(p)
+                    );
+                    setTransferProgress(null);
+                });
+                setMessages(prev => [...prev, optimisticMessage]);
+
+                // 3. Send File P2P FIRST (passing messageId)
+                // We need to update sendFileP2P to accept messageId in the next step, 
+                // but we can pass it via options if supported, or via the 4th arg if we update signature.
+                // Current signature: (fileUri, fileName, fileType, fileSize, senderId, recipientId, familyId, onProgress)
+                // We need to modify sendFileP2P to accept messageId.
+                // checks webrtcTransfer.ts -> sendFileP2P signature needs update. 
+                // For now, I will update sendFileP2P signature in next step.
+                // Assuming updated signature: ..., messageId, onProgress)
+
                 const success = await sendFileP2P(
-                    uri,
-                    fileName,
-                    fileType,
-                    fileSize || 0,
-                    user.id,
-                    recipientId,
-                    family.id,
-                    (progress) => setTransferProgress(progress),
-                    ac.signal
+                    uri, fileName, fileType, fileSize,
+                    user.id, recipientId, family.id,
+                    messageId, // New argument
+                    (p) => setTransferProgress(p)
                 );
 
                 if (success) {
-                    const { data: newMessage, error } = await supabase
+                    console.log('Transfer success, inserting message...');
+
+                    // 4. Insert Message Record on Success
+                    const { error: insertError } = await supabase
                         .from('chat_messages')
                         .insert({
+                            id: messageId, // Use the same ID
                             family_id: family.id,
                             sender_id: user.id,
                             recipient_id: recipientId,
-                            message_type: fileType,
-                            content: 'Sent an attachment',
-                            attachment_url: 'p2p_transfer',
+                            content: optimisticMessage.content,
+                            attachment_type: fileType,
                             attachment_name: fileName,
-                            attachment_size: fileSize,
-                            metadata: { status: 'sent', p2p: true }
-                        })
-                        .select('*, sender:sender_id(display_name, avatar_url)')
-                        .single();
+                            attachment_size: fileSize
+                        });
 
-                    if (!error && newMessage) {
-                        setMessages(prev => [...prev, newMessage as ChatMessage]);
+                    if (insertError) {
+                        throw insertError;
                     }
                 } else {
+                    console.warn('Transfer failed, removing optimistic message...');
+                    // Remove from local UI
+                    setMessages(prev => prev.filter(m => m.id !== messageId));
                     Alert.alert('Transfer Failed', 'Could not send file directly.');
                 }
             } catch (err) {
                 console.error('Send error:', err);
+                // Remove optimistic message on error
+                if (messageId) { // Only attempt to remove if messageId was successfully generated
+                    setMessages(prev => prev.filter(m => m.id !== messageId));
+                }
                 Alert.alert('Error', 'Failed to send file');
             } finally {
                 setSending(false);
-                setTransferProgress(null);
+                setTransferProgress(null); // Added back
                 setTransferStatus('idle');
-                abortController.current = null;
+                if (abortController.current) {
+                    abortController.current = null;
+                }
             }
         } else {
             // Queue for offline
@@ -496,43 +549,36 @@ export default function ChatScreen() {
         try {
             cleanup = listenForIncomingFiles(
                 user.id, family.id, recipientId,
-                async (metadata, blob) => {
-                    // React Native Image component doesn't support 'blob:' URLs directly.
-                    // We must convert to Base64 Data URL.
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        const base64data = reader.result as string;
-                        console.log(`[MobileAttachment] Converted blob to base64, length=${base64data.length}`);
+                async (metadata, fileUri) => {
+                    console.log(`[MobileAttachment] Received file URI: ${fileUri}`);
 
-                        // Retry logic for race condition
-                        let attempts = 0;
-                        const maxAttempts = 20; // Increased to 10s
-                        const attemptLoop = setInterval(() => {
-                            attempts++;
-                            if (attempts > maxAttempts) {
+                    // Retry logic for race condition
+                    let attempts = 0;
+                    const maxAttempts = 20; // Increased to 10s
+                    const attemptLoop = setInterval(() => {
+                        attempts++;
+                        if (attempts > maxAttempts) {
+                            clearInterval(attemptLoop);
+                            return;
+                        }
+
+                        setMessages(prev => {
+                            const foundIndex = prev.findIndex(m =>
+                                m.attachment_name === metadata.fileName &&
+                                m.sender_id === metadata.senderId &&
+                                !m.attachment_blob_url
+                            );
+
+                            if (foundIndex !== -1) {
+                                console.log(`[MobileAttachment] Found msg match, attaching.`);
+                                const newMessages = [...prev];
+                                newMessages[foundIndex] = { ...newMessages[foundIndex], attachment_blob_url: fileUri };
                                 clearInterval(attemptLoop);
-                                return;
+                                return newMessages;
                             }
-
-                            setMessages(prev => {
-                                const foundIndex = prev.findIndex(m =>
-                                    m.attachment_name === metadata.fileName &&
-                                    m.sender_id === metadata.senderId &&
-                                    !m.attachment_blob_url
-                                );
-
-                                if (foundIndex !== -1) {
-                                    console.log(`[MobileAttachment] Found msg match, attaching.`);
-                                    const newMessages = [...prev];
-                                    newMessages[foundIndex] = { ...newMessages[foundIndex], attachment_blob_url: base64data };
-                                    clearInterval(attemptLoop);
-                                    return newMessages;
-                                }
-                                return prev;
-                            });
-                        }, 500);
-                    };
-                    reader.readAsDataURL(blob);
+                            return prev;
+                        });
+                    }, 500);
                 },
                 (p) => {
                     setTransferStatus(prev => prev !== 'receiving' ? 'receiving' : prev);
@@ -561,10 +607,12 @@ export default function ChatScreen() {
 
         setOnQueueDrain(async (attachment) => {
             setTransferProgress(0);
+            const offlineMessageId = QuickCrypto.randomUUID(); // Generate ID for offline queue item
             await sendFileP2P(
                 attachment.fileUri, attachment.fileName, attachment.fileType,
                 attachment.fileSize,
                 user.id, recipientId, family.id,
+                offlineMessageId, // Pass generated ID
                 (p: number) => setTransferProgress(p)
             );
             setTransferProgress(null);
