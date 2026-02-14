@@ -579,6 +579,21 @@ export default function Profile() {
                 Sign Out
             </button>
 
+            {/* Footer / Credits */}
+            <div className="text-center py-6 mt-8 border-t border-slate-100">
+                <a
+                    href="https://bibinantony1998.github.io/my-portfolio/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-indigo-600 font-medium hover:underline"
+                >
+                    Know the Developer
+                </a>
+                <p className="text-xs text-slate-400 mt-1">
+                    © {new Date().getFullYear()} Family Command Center
+                </p>
+            </div>
+
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
         </div>
     );

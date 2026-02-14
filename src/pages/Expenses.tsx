@@ -233,16 +233,18 @@ export default function Expenses() {
                     <h3 className="text-lg font-bold text-gray-800">Recent Activity</h3>
                     <button
                         onClick={() => navigate('/expenses/reports')}
-                        className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100 transition-colors"
+                        className="flex items-center gap-2 bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors font-medium text-sm"
                         title="View Reports"
                     >
-                        <BarChart2 size={20} />
+                        <BarChart2 size={18} />
+                        <span>Reports</span>
                     </button>
                 </div>
                 <div className="space-y-6">
                     {recentActivity.map(item => (
                         <div key={item.id} className="flex items-start gap-4">
-                            <div className={`p-2 rounded-lg mt-1 shrink-0 ${item.type === 'expense' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>
+                            <div
+                                className={`p-2.5 rounded-full mt-1 shrink-0 transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer shadow-sm ${item.type === 'expense' ? 'bg-blue-600 text-white shadow-blue-200 hover:bg-blue-700 hover:shadow-md' : 'bg-green-50 text-green-600 border border-green-200'}`}>
                                 {item.type === 'expense' ? <Receipt className="w-5 h-5" /> : <ArrowRightLeft className="w-5 h-5" />}
                             </div>
                             <div className="flex-1 min-w-0">
