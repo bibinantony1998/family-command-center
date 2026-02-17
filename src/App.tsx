@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { CallProvider } from './contexts/CallContext';
 import { AppLayout } from './components/layout/AppLayout';
 import Auth from './pages/Auth';
 import JoinFamily from './pages/JoinFamily';
@@ -31,7 +32,9 @@ import ExpenseReports from './pages/ExpenseReports';
 export default function App() {
   return (
     <AuthProvider>
-      <AuthenticatedAppContent />
+      <CallProvider>
+        <AuthenticatedAppContent />
+      </CallProvider>
     </AuthProvider>
   );
 }

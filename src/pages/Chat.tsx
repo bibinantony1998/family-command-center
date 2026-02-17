@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useCall } from '../contexts/CallContext';
 import { supabase } from '../lib/supabase';
 import type { Profile } from '../types';
 import { ChatList } from '../components/chat/ChatList';
 import { ChatWindow } from '../components/chat/ChatWindow';
-import { ArrowLeft, MessageSquare } from 'lucide-react';
+import { ArrowLeft, MessageSquare, Video } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { usePresence } from '../hooks/usePresence';
 
 export default function Chat() {
     const { profile, family } = useAuth(); // Destructure family
+    const { startCall } = useCall();
     const navigate = useNavigate();
 
     // activeChatId: null = List View, 'GROUP' = Group, 'uuid' = DM
@@ -99,6 +101,16 @@ export default function Chat() {
                             </span>
                         )}
                     </div>
+                    {isDM && (
+                        <button
+                            onClick={() => startCall(activeChatId, chatTitle)}
+                            disabled={!recipientOnline}
+                            title={recipientOnline ? 'Start video call' : 'User is offline'}
+                            className={`ml-auto p-2 rounded-full transition-colors ${recipientOnline ? 'text-indigo-600 hover:bg-slate-100' : 'text-slate-300 cursor-not-allowed'}`}
+                        >
+                            <Video size={24} />
+                        </button>
+                    )}
                 </div>
 
                 {/* Chat Window takes remaining space */}

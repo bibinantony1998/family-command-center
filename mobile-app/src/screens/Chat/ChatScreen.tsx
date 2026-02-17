@@ -6,11 +6,14 @@ import { supabase } from '../../lib/supabase';
 import { ChatMessage } from '../../types/schema';
 import { KeyManager, DeviceKey } from '../../lib/encryption';
 import { MessageBubble } from '../../components/chat/MessageBubble';
-import { ChevronLeft, Send, Paperclip, MoreVertical, Trash2, Download, X } from 'lucide-react-native';
+import { ChevronLeft, Send, Paperclip, MoreVertical, Trash2, Download, X, Video } from 'lucide-react-native';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../navigation/types';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { usePresence } from '../../hooks/usePresence';
+
 import { launchImageLibrary } from 'react-native-image-picker';
 import { sendFileP2P, listenForIncomingFiles } from '../../lib/webrtcTransfer';
 import { queueAttachment, getQueuedAttachments, drainQueueForRecipient, setOnQueueDrain, subscribeToQueue, removeFromQueue } from '../../lib/attachmentQueue';
@@ -21,8 +24,9 @@ type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>;
 export default function ChatScreen() {
     const { user, family } = useAuth();
     const { refreshUnreadCounts } = useChat();
-    const navigation = useNavigation();
+    const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
     const route = useRoute<ChatScreenRouteProp>();
+
 
     const recipientId = route.params?.recipientId || null;
     const name = route.params?.name || 'Chat';
@@ -661,7 +665,20 @@ export default function ChatScreen() {
                             </View>
                         )}
                     </View>
-                    <View style={{ width: 24 }} />
+                    {isDM && (
+                        <TouchableOpacity
+                            onPress={() => navigation.navigate('VideoCall', {
+                                recipientId: recipientId!,
+                                name: name,
+                                isCaller: true
+                            })}
+                            style={{ padding: 8, marginRight: 8 }}
+                        >
+                            <Video color="#6366f1" size={24} />
+                        </TouchableOpacity>
+                    )}
+                    <View style={{ width: 8 }} />
+
                 </View>
 
 
@@ -859,7 +876,7 @@ export default function ChatScreen() {
                     </View>
                 </View>
             </Modal>
-        </SafeAreaView>
+        </SafeAreaView >
     );
 }
 

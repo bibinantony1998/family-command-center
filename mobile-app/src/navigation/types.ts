@@ -24,7 +24,9 @@ export type RootStackParamList = {
     SettleUp: undefined;
     ExpenseReports: undefined;
     Chat: { recipientId: string | null; name: string };
+    VideoCall: { recipientId: string; name: string; isCaller: boolean; offer?: any };
 };
+
 
 export type AuthStackParamList = {
     Login: undefined;

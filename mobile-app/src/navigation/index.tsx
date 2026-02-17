@@ -10,6 +10,8 @@ import JoinFamilyScreen from '../screens/auth/JoinFamily';
 import SplashScreen from '../screens/SplashScreen';
 import MainTabNavigator from './MainTabNavigator';
 import { RootStackParamList } from './types';
+import { CallListener } from '../components/CallListener';
+
 
 const Stack = createStackNavigator<RootStackParamList>();
 const AuthStack = createStackNavigator();
@@ -51,7 +53,9 @@ export default function RootNavigator() {
 
     return (
         <NavigationContainer>
+            <CallListener />
             <Stack.Navigator screenOptions={{ headerShown: false }}>
+
                 {!session ? (
                     <Stack.Screen name="Auth" component={AuthNavigator} />
                 ) : !family ? (
@@ -62,6 +66,8 @@ export default function RootNavigator() {
                         <Stack.Screen name="Profile" component={require('../screens/Profile').default} />
                         <Stack.Screen name="JoinFamily" component={JoinFamilyScreen} />
                         <Stack.Screen name="Chat" component={require('../screens/Chat/ChatScreen').default} />
+                        <Stack.Screen name="VideoCall" component={require('../screens/Chat/VideoCallScreen').default} />
+
 
                         {/* Expenses */}
                         <Stack.Screen name="AddExpense" component={require('../screens/Expenses/AddExpense').default} />
