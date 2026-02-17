@@ -23,11 +23,14 @@ export function VideoCallOverlay({
     familyId,
     onClose
 }: VideoCallOverlayProps) {
+    // State for incoming call
+    const [hasAccepted, setHasAccepted] = useState(isCaller);
+
     const [localStream, setLocalStream] = useState<MediaStream | null>(null);
     const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
     const [isMuted, setIsMuted] = useState(false);
     const [isCameraOff, setIsCameraOff] = useState(false);
-    const [status, setStatus] = useState<string>('Initializing...');
+    const [status, setStatus] = useState<string>(isCaller ? 'Calling...' : 'Incoming call...');
 
     // Refs
     const pc = useRef<RTCPeerConnection | null>(null);
@@ -63,7 +66,7 @@ export function VideoCallOverlay({
             signaling.current.destroy();
             signaling.current = null;
         }
-    }, [localStream]); // localStream dependency is fine here if cleanup isn't in useEffect dependency
+    }, [localStream]);
 
     const endCall = useCallback(() => {
         if (signaling.current && recipientId) {
@@ -73,18 +76,43 @@ export function VideoCallOverlay({
         onClose();
     }, [recipientId, cleanup, onClose]);
 
+    const handleAccept = () => {
+        setHasAccepted(true);
+        setStatus('Connecting...');
+    };
+
+    const handleDecline = () => {
+        // Send a decline signal (optional, but good UX) - for now just close
+        // In a real app we might send a 'call-rejected' signal
+        if (signaling.current) {
+            // We can't send if signaling isn't init yet. 
+            // If we really want to send 'reject', we'd need to init signaling earlier.
+            // For now, simpler to just close local. The caller will timeout or see 'disconnected'.
+            // To do it properly, we could init signaling in a useEffect dependent on nothing, 
+            // but keeping it simple for now as requested.
+        }
+        cleanup();
+        onClose();
+    };
+
     // Initialize Call
     useEffect(() => {
+        if (!hasAccepted) return; // Wait for accept
+
         let mounted = true;
 
         const startCall = async () => {
             if (streamRef.current) return; // Already started
 
             try {
-                // 1. Get User Media
+                // 1. Get User Media - Prefer Portrait for Mobile-like experience
                 const stream = await navigator.mediaDevices.getUserMedia({
                     audio: true,
-                    video: { width: 1280, height: 720 }
+                    video: {
+                        width: { ideal: 720 },
+                        height: { ideal: 1280 },
+                        facingMode: "user"
+                    }
                 });
 
                 if (!mounted) {
@@ -202,7 +230,7 @@ export function VideoCallOverlay({
             if (signaling.current) signaling.current.destroy();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Run ONCE on mount. VideoCallOverlay is only mounted when call starts.
+    }, [hasAccepted]); // Dependent on hasAccepted
 
     // Effect to attach remote stream ref if it changes (e.g. late render)
     useEffect(() => {
@@ -242,6 +270,42 @@ export function VideoCallOverlay({
             }
         }
     };
+
+    if (!hasAccepted) {
+        return (
+            <div className="fixed inset-0 z-50 bg-slate-900 flex flex-col items-center justify-center">
+                <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl flex flex-col items-center max-w-sm w-full mx-4">
+                    <div className="w-32 h-32 bg-slate-700 rounded-full mb-6 flex items-center justify-center animate-pulse">
+                        <span className="text-6xl">📞</span>
+                    </div>
+                    <h2 className="text-2xl font-bold text-white mb-2">{name}</h2>
+                    <p className="text-slate-400 mb-8">Incoming Video Call...</p>
+
+                    <div className="flex gap-8 w-full justify-center">
+                        <button
+                            onClick={handleDecline}
+                            className="flex flex-col items-center gap-2 group"
+                        >
+                            <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center shadow-lg group-hover:bg-red-600 transition-all transform group-hover:scale-110">
+                                <PhoneOff size={32} className="text-white" />
+                            </div>
+                            <span className="text-slate-300 text-sm">Decline</span>
+                        </button>
+
+                        <button
+                            onClick={handleAccept}
+                            className="flex flex-col items-center gap-2 group"
+                        >
+                            <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center shadow-lg group-hover:bg-green-600 transition-all transform group-hover:scale-110 animate-bounce">
+                                <Video size={32} className="text-white" />
+                            </div>
+                            <span className="text-slate-300 text-sm">Answer</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="fixed inset-0 z-50 bg-slate-900 flex flex-col">
