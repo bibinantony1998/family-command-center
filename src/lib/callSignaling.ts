@@ -141,7 +141,16 @@ export class CallSignaling {
     }
 }
 
+let turnCache: any = null;
+let turnCacheTime = 0;
+const CACHE_DURATION_MS = 1000 * 60 * 60; // 1 hour
+
 export async function fetchTurnServers() {
+    // Return cached if available and fresh
+    if (turnCache && (Date.now() - turnCacheTime < CACHE_DURATION_MS)) {
+        return turnCache;
+    }
+
     // Re-use the metering logic from env
     const appName = import.meta.env.VITE_METERED_APP_NAME;
     const apiKey = import.meta.env.VITE_METERED_API_KEY;
@@ -153,7 +162,13 @@ export async function fetchTurnServers() {
     try {
         const res = await fetch(`https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`);
         if (!res.ok) throw new Error('Failed to fetch TURN');
-        return await res.json();
+        const data = await res.json();
+
+        // Update cache
+        turnCache = data;
+        turnCacheTime = Date.now();
+
+        return data;
     } catch (e) {
         console.warn('TURN fetch failed, using STUN fallback', e);
         return CALL_CONFIG.ICE_SERVERS_FALLBACK;

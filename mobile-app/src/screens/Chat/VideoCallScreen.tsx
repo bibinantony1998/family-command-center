@@ -35,22 +35,19 @@ export default function VideoCallScreen() {
     const pc = useRef<RTCPeerConnection | null>(null);
     const signaling = useRef<CallSignaling | null>(null);
     const pendingCandidates = useRef<any[]>([]);
+    const streamRef = useRef<MediaStream | null>(null);
 
     const callId = useRef<string>(isCaller ? `${Date.now()}-${Math.random()}` : (offer ? offer.callId : ''));
 
     // --- Cleanup ---
-    const endCall = useCallback(() => {
-        if (signaling.current && recipientId) {
-            signaling.current.sendSignal(recipientId, 'call-end', {}, callId.current);
+    const cleanup = useCallback(() => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current.release();
+            streamRef.current = null;
         }
-        cleanup();
-        navigation.goBack();
-    }, [recipientId, navigation]);
-
-    const cleanup = () => {
         if (localStream) {
-            localStream.getTracks().forEach(t => t.stop());
-            localStream.release();
+            setLocalStream(null);
         }
         if (pc.current) {
             pc.current.close();
@@ -60,7 +57,15 @@ export default function VideoCallScreen() {
             signaling.current.destroy();
             signaling.current = null;
         }
-    };
+    }, [localStream]);
+
+    const endCall = useCallback(() => {
+        if (signaling.current && recipientId) {
+            signaling.current.sendSignal(recipientId, 'call-end', {}, callId.current);
+        }
+        cleanup();
+        navigation.goBack();
+    }, [recipientId, cleanup, navigation]);
 
     // --- WebRTC Setup ---
     useEffect(() => {
@@ -69,7 +74,7 @@ export default function VideoCallScreen() {
         let started = false;
 
         const startCall = async () => {
-            if (started) return;
+            if (started || streamRef.current) return;
             started = true;
 
             // 1. Setup Stream
@@ -80,11 +85,13 @@ export default function VideoCallScreen() {
                         width: 640, height: 480, frameRate: 30, facingMode: 'user'
                     }
                 });
+
+                streamRef.current = stream;
                 setLocalStream(stream);
 
                 // 2. Setup PC
                 const iceServers = await fetchTurnServers();
-                const configuration = { iceServers, iceTransportPolicy: 'all' as const }; // 'all' allows P2P (host) + Relay
+                const configuration = { iceServers, iceTransportPolicy: 'all' as const };
 
                 const peerConnection = new RTCPeerConnection(configuration);
                 pc.current = peerConnection;
@@ -124,7 +131,6 @@ export default function VideoCallScreen() {
                 // 3. Setup Signaling
                 signaling.current = new CallSignaling(user.id, family.id, async (msg: SignalMessage) => {
                     if (msg.callId && msg.callId !== callId.current && !isCaller) {
-                        // If we are callee, adopt the callID if not set (though passed via params usually)
                         if (!callId.current) callId.current = msg.callId;
                     }
 
@@ -137,10 +143,8 @@ export default function VideoCallScreen() {
                             await pc.current.setRemoteDescription(new RTCSessionDescription(msg.sdp));
                         }
                     } else if (msg.type === 'offer') {
-                        // Renegotiation or late join? usually handled in creation if callee
                         if (pc.current && pc.current.signalingState === 'stable') {
-                            // If we are already stable, this might be renegotiation (e.g. camera toggle)
-                            // For MVP, ignore or auto-accept
+                            // Renegotiation
                         }
                     } else if (msg.type === 'ice-candidate') {
                         if (pc.current) {
@@ -162,13 +166,11 @@ export default function VideoCallScreen() {
                     // Callee
                     setStatus('Connecting...');
                     if (offer && offer.sdp) {
-                        // We came from a notification/chat screen with the offer
                         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer.sdp));
                         const answerDescription = await peerConnection.createAnswer();
                         await peerConnection.setLocalDescription(answerDescription);
                         signaling.current.sendSignal(recipientId, 'answer', { sdp: answerDescription }, callId.current);
 
-                        // Process pending candidates
                         pendingCandidates.current.forEach(c => peerConnection.addIceCandidate(new RTCIceCandidate(c)));
                         pendingCandidates.current = [];
                     }
@@ -184,9 +186,16 @@ export default function VideoCallScreen() {
         startCall();
 
         return () => {
-            cleanup(); // Ensure cleanup on unmount
+            // Immediate cleanup on unmount
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(t => t.stop());
+                streamRef.current.release();
+            }
+            if (pc.current) pc.current.close();
+            if (signaling.current) signaling.current.destroy();
         };
-    }, [user, family, isCaller, offer, recipientId, navigation]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Run ONCE on mount
 
     const toggleMic = () => {
         if (localStream) {
@@ -275,7 +284,6 @@ export default function VideoCallScreen() {
         </View>
     );
 }
-
 const styles = StyleSheet.create({
     container: {
         flex: 1,

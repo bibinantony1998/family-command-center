@@ -44,9 +44,16 @@ export function VideoCallOverlay({
 
     const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
 
+    // Use refs for cleanup to avoid dependency cycles in useEffect
+    const streamRef = useRef<MediaStream | null>(null);
+
     const cleanup = useCallback(() => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+        }
         if (localStream) {
-            localStream.getTracks().forEach(t => t.stop());
+            setLocalStream(null);
         }
         if (pc.current) {
             pc.current.close();
@@ -56,7 +63,7 @@ export function VideoCallOverlay({
             signaling.current.destroy();
             signaling.current = null;
         }
-    }, [localStream]);
+    }, [localStream]); // localStream dependency is fine here if cleanup isn't in useEffect dependency
 
     const endCall = useCallback(() => {
         if (signaling.current && recipientId) {
@@ -71,6 +78,8 @@ export function VideoCallOverlay({
         let mounted = true;
 
         const startCall = async () => {
+            if (streamRef.current) return; // Already started
+
             try {
                 // 1. Get User Media
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -83,7 +92,9 @@ export function VideoCallOverlay({
                     return;
                 }
 
+                streamRef.current = stream;
                 setLocalStream(stream);
+
                 if (localVideoRef.current) {
                     localVideoRef.current.srcObject = stream;
                 }
@@ -183,9 +194,15 @@ export function VideoCallOverlay({
 
         return () => {
             mounted = false;
-            cleanup();
+            // Immediate cleanup on unmount
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(t => t.stop());
+            }
+            if (pc.current) pc.current.close();
+            if (signaling.current) signaling.current.destroy();
         };
-    }, [cleanup, currentProfile.id, familyId, isCaller, offer, recipientId, endCall, onClose]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Run ONCE on mount. VideoCallOverlay is only mounted when call starts.
 
     // Effect to attach remote stream ref if it changes (e.g. late render)
     useEffect(() => {
