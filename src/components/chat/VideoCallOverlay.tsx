@@ -211,6 +211,13 @@ export function VideoCallOverlay({
         }
     }, [remoteStream]);
 
+    // Effect to attach local stream ref if it changes (e.g. late render or camera toggle)
+    useEffect(() => {
+        if (localStream && localVideoRef.current) {
+            localVideoRef.current.srcObject = localStream;
+        }
+    }, [localStream, isCameraOff]);
+
 
     const toggleMic = () => {
         if (localStream) {
