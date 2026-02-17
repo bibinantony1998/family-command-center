@@ -334,8 +334,8 @@ export function VideoCallOverlay({
                     </div>
                 )}
 
-                {/* Local Video PiP */}
-                <div className="absolute top-4 right-4 w-28 md:w-48 aspect-[9/16] md:aspect-video bg-slate-800 rounded-lg overflow-hidden border-2 border-slate-700 shadow-xl ml-4 mt-4">
+                {/* Self View (Local Camera) */}
+                <div className="absolute top-4 right-4 w-28 h-48 md:w-48 md:h-28 bg-slate-800 rounded-lg overflow-hidden border-2 border-slate-700 shadow-xl ml-4 mt-4">
                     {localStream && !isCameraOff ? (
                         <video
                             ref={localVideoRef}
