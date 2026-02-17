@@ -316,7 +316,7 @@ export function VideoCallOverlay({
                         ref={remoteVideoRef}
                         autoPlay
                         playsInline
-                        className="w-full h-full object-contain"
+                        className="w-full h-full object-cover md:object-contain transition-all"
                     />
                 ) : (
                     <div className="text-center">
@@ -349,12 +349,12 @@ export function VideoCallOverlay({
                 </div>
             </div>
 
-            {/* Controls Bar */}
-            <div className="bg-slate-900/90 backdrop-blur pb-8 pt-6 px-6">
+            {/* Controls Bar - Floating at bottom */}
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent pb-8 pt-12 px-6 safe-area-bottom">
                 <div className="max-w-md mx-auto flex items-center justify-center gap-6">
                     <button
                         onClick={toggleMic}
-                        className={`p-4 rounded-full transition-colors ${isMuted ? 'bg-slate-700 text-red-500' : 'bg-slate-700/50 text-white hover:bg-slate-700'}`}
+                        className={`p-4 rounded-full transition-colors ${isMuted ? 'bg-slate-700 text-red-500' : 'bg-slate-700/50 text-white hover:bg-slate-700'} backdrop-blur-sm`}
                     >
                         {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
                     </button>
@@ -368,7 +368,7 @@ export function VideoCallOverlay({
 
                     <button
                         onClick={toggleCamera}
-                        className={`p-4 rounded-full transition-colors ${isCameraOff ? 'bg-slate-700 text-red-500' : 'bg-slate-700/50 text-white hover:bg-slate-700'}`}
+                        className={`p-4 rounded-full transition-colors ${isCameraOff ? 'bg-slate-700 text-red-500' : 'bg-slate-700/50 text-white hover:bg-slate-700'} backdrop-blur-sm`}
                     >
                         {isCameraOff ? <VideoOff size={24} /> : <Video size={24} />}
                     </button>
@@ -377,7 +377,7 @@ export function VideoCallOverlay({
                     {document.pictureInPictureEnabled && (
                         <button
                             onClick={togglePiP}
-                            className="p-4 rounded-full bg-slate-700/50 text-white hover:bg-slate-700 transition-colors"
+                            className="p-4 rounded-full bg-slate-700/50 text-white hover:bg-slate-700 transition-colors backdrop-blur-sm"
                             title="Picture in Picture"
                         >
                             <Minimize2 size={24} />
