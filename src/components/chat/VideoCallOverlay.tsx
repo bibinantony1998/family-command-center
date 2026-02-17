@@ -105,15 +105,34 @@ export function VideoCallOverlay({
             if (streamRef.current) return; // Already started
 
             try {
-                // 1. Get User Media - Prefer Portrait for Mobile-like experience
-                const stream = await navigator.mediaDevices.getUserMedia({
+                // 1. Get User Media - Adapt to screen size
+                const isMobile = window.innerWidth <= 1024;
+                const constraints = {
                     audio: true,
                     video: {
-                        width: { ideal: 720 },
-                        height: { ideal: 1280 },
+                        width: isMobile ? { ideal: 720 } : { ideal: 1280 },
+                        height: isMobile ? { ideal: 1280 } : { ideal: 720 },
                         facingMode: "user"
                     }
-                });
+                };
+
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+                if (!mounted) {
+                    stream.getTracks().forEach(t => t.stop());
+                    return;
+                }
+
+                streamRef.current = stream;
+                // ... (rest of function) ...
+
+                // ... (in JSX) ...
+                <video
+                    ref={remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-contain bg-black" // Ensure black background for letterboxing
+                />
 
                 if (!mounted) {
                     stream.getTracks().forEach(t => t.stop());
