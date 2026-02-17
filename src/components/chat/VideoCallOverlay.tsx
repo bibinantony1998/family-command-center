@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import type { SignalMessage } from '../../lib/callSignaling';
 import { CallSignaling, fetchTurnServers } from '../../lib/callSignaling';
 import { Mic, MicOff, Video, VideoOff, PhoneOff, Minimize2 } from 'lucide-react';

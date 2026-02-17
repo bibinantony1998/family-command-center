@@ -46,12 +46,15 @@ function getChannelName(familyId: string, userId: string) {
 
 export class CallSignaling {
     private cleanupResults: (() => void)[] = [];
+    private userId: string;
+    private familyId: string;
+    private onSignal: SignalCallback;
 
-    constructor(
-        private userId: string,
-        private familyId: string,
-        private onSignal: SignalCallback
-    ) { }
+    constructor(userId: string, familyId: string, onSignal: SignalCallback) {
+        this.userId = userId;
+        this.familyId = familyId;
+        this.onSignal = onSignal;
+    }
 
     /**
      * Start listening for generic incoming signals (offers, answers, candidates) 
