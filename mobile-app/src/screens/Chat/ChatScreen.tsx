@@ -651,9 +651,12 @@ export default function ChatScreen() {
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
             >
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                        <ChevronLeft color="#0f172a" size={24} />
-                    </TouchableOpacity>
+                    <View style={styles.headerLeft}>
+                        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                            <ChevronLeft color="#0f172a" size={24} />
+                        </TouchableOpacity>
+                    </View>
+
                     <View style={styles.headerCenter}>
                         <Text style={styles.headerTitle}>{name}</Text>
                         {isDM && (
@@ -665,20 +668,21 @@ export default function ChatScreen() {
                             </View>
                         )}
                     </View>
-                    {isDM && (
-                        <TouchableOpacity
-                            onPress={() => navigation.navigate('VideoCall', {
-                                recipientId: recipientId!,
-                                name: name,
-                                isCaller: true
-                            })}
-                            style={{ padding: 8, marginRight: 8 }}
-                        >
-                            <Video color="#6366f1" size={24} />
-                        </TouchableOpacity>
-                    )}
-                    <View style={{ width: 8 }} />
 
+                    <View style={styles.headerRight}>
+                        {isDM && (
+                            <TouchableOpacity
+                                onPress={() => navigation.navigate('VideoCall', {
+                                    recipientId: recipientId!,
+                                    name: name,
+                                    isCaller: true
+                                })}
+                                style={styles.videoButton}
+                            >
+                                <Video color="#6366f1" size={24} />
+                            </TouchableOpacity>
+                        )}
+                    </View>
                 </View>
 
 
@@ -1007,18 +1011,31 @@ const styles = StyleSheet.create({
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
         paddingHorizontal: 16,
         paddingVertical: 12,
         borderBottomWidth: 1,
         borderBottomColor: '#f1f5f9',
         backgroundColor: 'white',
     },
+    headerLeft: {
+        width: 48,
+        alignItems: 'flex-start',
+    },
     headerCenter: {
+        flex: 1,
         alignItems: 'center',
+    },
+    headerRight: {
+        width: 48,
+        alignItems: 'flex-end',
     },
     backButton: {
         padding: 4,
+        marginLeft: -4,
+    },
+    videoButton: {
+        padding: 8,
+        marginRight: -8,
     },
     headerTitle: {
         fontSize: 18,
