@@ -124,22 +124,6 @@ export function VideoCallOverlay({
                 }
 
                 streamRef.current = stream;
-                // ... (rest of function) ...
-
-                // ... (in JSX) ...
-                <video
-                    ref={remoteVideoRef}
-                    autoPlay
-                    playsInline
-                    className="w-full h-full object-contain bg-black" // Ensure black background for letterboxing
-                />
-
-                if (!mounted) {
-                    stream.getTracks().forEach(t => t.stop());
-                    return;
-                }
-
-                streamRef.current = stream;
                 setLocalStream(stream);
 
                 if (localVideoRef.current) {
@@ -335,7 +319,8 @@ export function VideoCallOverlay({
                         ref={remoteVideoRef}
                         autoPlay
                         playsInline
-                        className="w-full h-full object-cover md:object-contain transition-all"
+                        className="w-full h-full object-contain bg-black transition-all"
+                        style={{ filter: 'brightness(1.1) saturate(1.3) contrast(1.1)' }}
                     />
                 ) : (
                     <div className="text-center">
@@ -358,7 +343,7 @@ export function VideoCallOverlay({
                             playsInline
                             muted
                             className="w-full h-full object-cover mirror"
-                            style={{ transform: 'scaleX(-1)' }} // Mirror local video
+                            style={{ transform: 'scaleX(-1)', filter: 'brightness(1.1) saturate(1.3) contrast(1.1)' }} // Mirror local video + beautify
                         />
                     ) : (
                         <div className="w-full h-full flex items-center justify-center bg-slate-800">
