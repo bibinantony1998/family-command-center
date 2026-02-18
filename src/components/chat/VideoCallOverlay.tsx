@@ -37,14 +37,12 @@ export function VideoCallOverlay({
     const signaling = useRef<CallSignaling | null>(null);
     const localVideoRef = useRef<HTMLVideoElement>(null);
     const remoteVideoRef = useRef<HTMLVideoElement>(null);
-    // Initialize callId only once
-    const callId = useRef<string>('');
-    useEffect(() => {
-        if (!callId.current) {
-            callId.current = isCaller ? crypto.randomUUID() : (offer ? offer.callId || '' : '');
-        }
-    }, [isCaller, offer]);
+    // Initialize callId synchronously (not in useEffect to avoid race)
+    const callId = useRef<string>(
+        isCaller ? crypto.randomUUID() : (offer?.callId ?? '')
+    );
 
+    // Buffer ICE candidates that arrive before remoteDescription is set
     const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
 
     // Use refs for cleanup to avoid dependency cycles in useEffect
@@ -185,9 +183,14 @@ export function VideoCallOverlay({
                     } else if (msg.type === 'offer') {
                         // ignore if already stable
                     } else if (msg.type === 'ice-candidate') {
-                        if (pc.current) {
-                            await pc.current.addIceCandidate(new RTCIceCandidate(msg.candidate));
+                        if (pc.current && pc.current.remoteDescription) {
+                            try {
+                                await pc.current.addIceCandidate(new RTCIceCandidate(msg.candidate));
+                            } catch (e) {
+                                console.warn('[WebRTC] addIceCandidate error:', e);
+                            }
                         } else {
+                            console.log('[WebRTC] Buffering ICE candidate (no remoteDescription yet)');
                             pendingCandidates.current.push(msg.candidate);
                         }
                     }
@@ -209,7 +212,15 @@ export function VideoCallOverlay({
                         await peerConnection.setLocalDescription(answerDesc);
                         signaling.current.sendSignal(recipientId, 'answer', { sdp: answerDesc }, callId.current);
 
-                        pendingCandidates.current.forEach(c => peerConnection.addIceCandidate(new RTCIceCandidate(c)));
+                        // Flush buffered ICE candidates
+                        console.log(`[WebRTC] Flushing ${pendingCandidates.current.length} buffered ICE candidates`);
+                        for (const c of pendingCandidates.current) {
+                            try {
+                                await peerConnection.addIceCandidate(new RTCIceCandidate(c));
+                            } catch (e) {
+                                console.warn('[WebRTC] Buffered candidate error:', e);
+                            }
+                        }
                         pendingCandidates.current = [];
                     }
                 }
