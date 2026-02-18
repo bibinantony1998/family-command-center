@@ -647,7 +647,7 @@ export default function ChatScreen() {
         <SafeAreaView style={styles.container}>
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                behavior="padding"
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
             >
                 <View style={styles.header}>
@@ -1065,7 +1065,7 @@ const styles = StyleSheet.create({
     inputContainer: {
         flexDirection: 'column',
         padding: 12,
-        paddingTop: 0,
+        paddingTop: 8,
         borderTopWidth: 1,
         borderTopColor: '#f1f5f9',
         backgroundColor: 'white',
