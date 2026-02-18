@@ -4,7 +4,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
 import { CallSignaling, SignalMessage } from '../lib/callSignaling';
-import { Alert } from 'react-native';
+import { supabase } from '../lib/supabase';
 
 export function CallListener() {
     const { user, family } = useAuth();
@@ -14,25 +14,29 @@ export function CallListener() {
     useEffect(() => {
         if (!user || !family) return;
 
-        signaling.current = new CallSignaling(user.id, family.id, (msg: SignalMessage) => {
+        signaling.current = new CallSignaling(user.id, family.id, async (msg: SignalMessage) => {
             if (msg.type === 'offer') {
-                // Incoming call!
-                console.log('Incoming call offer received:', msg);
+                console.log('[CallListener] Incoming call offer from:', msg.from);
 
-                // We should check if we are already in a call?
-                // For now, just navigate. The VideoCallScreen will handle the rest (and adopt the callId).
-                // We might want to show a "Answer/Decline" customized UI here (like a full screen modal) 
-                // but for MVP, navigating to VideoCallScreen acts as "Opening the call UI".
-                // The VideoCallScreen logic will see "offer" param and trigger "Connecting..."/Auto-Answer or Wait for user accept.
-                // Currently VideoCallScreen logic with `offer` param does:
-                // setRemoteDescription -> createAnswer. It auto-answers.
-                // Ideally we want to RING first. 
-                // But let's stick to simple implementation: Navigate -> Connects.
-                // User can "End Call" to reject.
+                // Fetch caller's display name from profiles
+                let callerName = 'Incoming Call';
+                try {
+                    const { data } = await supabase
+                        .from('profiles')
+                        .select('display_name')
+                        .eq('id', msg.from)
+                        .single();
+                    if (data?.display_name) {
+                        callerName = data.display_name;
+                    }
+                } catch (e) {
+                    console.warn('[CallListener] Could not fetch caller name:', e);
+                }
 
+                // Navigate to VideoCallScreen — it will show Answer/Decline UI
                 navigation.navigate('VideoCall', {
                     recipientId: msg.from,
-                    name: 'Incoming Call...', // We could fetch name if we had it, or just show "Incoming"
+                    name: callerName,
                     isCaller: false,
                     offer: msg
                 });

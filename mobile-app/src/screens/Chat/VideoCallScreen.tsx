@@ -1,14 +1,16 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Dimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { RTCPeerConnection, RTCIceCandidate, RTCSessionDescription, RTCView, mediaDevices, MediaStream } from 'react-native-webrtc';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../navigation/types';
-import { CallSignaling, fetchTurnServers, SignalMessage, CALL_CONFIG } from '../../lib/callSignaling';
+import { CallSignaling, fetchTurnServers, SignalMessage } from '../../lib/callSignaling';
 import { useAuth } from '../../context/AuthContext';
-import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff, SwitchCamera, Minimize2 } from 'lucide-react-native';
+import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff, SwitchCamera } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-// Polyfill/Fix for RN WebRTC types if needed
+type VideoCallRouteProp = RouteProp<RootStackParamList, 'VideoCall'>;
+
+// Extend react-native-webrtc types to include event handlers missing from @types
 declare module 'react-native-webrtc' {
     interface RTCPeerConnection {
         oniceconnectionstatechange: ((event: Event) => void) | null;
@@ -17,38 +19,37 @@ declare module 'react-native-webrtc' {
     }
 }
 
-type VideoCallRouteProp = RouteProp<RootStackParamList, 'VideoCall'>;
-
 export default function VideoCallScreen() {
     const navigation = useNavigation();
     const route = useRoute<VideoCallRouteProp>();
     const { recipientId, name, isCaller, offer } = route.params;
     const { user, family } = useAuth();
 
+    // ---- Key state: callee must accept before we start WebRTC ----
+    const [hasAccepted, setHasAccepted] = useState(isCaller); // caller auto-accepts
+
     const [localStream, setLocalStream] = useState<MediaStream | null>(null);
     const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
     const [isMuted, setIsMuted] = useState(false);
     const [isCameraOff, setIsCameraOff] = useState(false);
-    const [status, setStatus] = useState<string>('Initializing...');
+    const [status, setStatus] = useState<string>(isCaller ? 'Calling...' : 'Incoming call...');
 
     // WebRTC Refs
     const pc = useRef<RTCPeerConnection | null>(null);
     const signaling = useRef<CallSignaling | null>(null);
     const pendingCandidates = useRef<any[]>([]);
     const streamRef = useRef<MediaStream | null>(null);
-
     const callId = useRef<string>(isCaller ? `${Date.now()}-${Math.random()}` : (offer ? offer.callId : ''));
 
     // --- Cleanup ---
     const cleanup = useCallback(() => {
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(t => t.stop());
-            streamRef.current.release();
+            // @ts-ignore - react-native-webrtc specific
+            if (streamRef.current.release) streamRef.current.release();
             streamRef.current = null;
         }
-        if (localStream) {
-            setLocalStream(null);
-        }
+        setLocalStream(null);
         if (pc.current) {
             pc.current.close();
             pc.current = null;
@@ -57,7 +58,7 @@ export default function VideoCallScreen() {
             signaling.current.destroy();
             signaling.current = null;
         }
-    }, [localStream]);
+    }, []);
 
     const endCall = useCallback(() => {
         if (signaling.current && recipientId) {
@@ -67,47 +68,49 @@ export default function VideoCallScreen() {
         navigation.goBack();
     }, [recipientId, cleanup, navigation]);
 
-    // --- WebRTC Setup ---
-    useEffect(() => {
-        if (!user || !family) return;
+    const handleAccept = () => {
+        setHasAccepted(true);
+        setStatus('Connecting...');
+    };
 
-        let started = false;
+    const handleDecline = () => {
+        cleanup();
+        navigation.goBack();
+    };
+
+    // --- WebRTC Setup (only after accepted) ---
+    useEffect(() => {
+        if (!hasAccepted || !user || !family) return;
+
+        let mounted = true;
 
         const startCall = async () => {
-            if (started || streamRef.current) return;
-            started = true;
+            if (streamRef.current) return; // Already started
 
-            // 1. Setup Stream
             try {
+                // 1. Get local media
                 const stream = await mediaDevices.getUserMedia({
                     audio: true,
                     video: {
-                        width: 640, height: 480, frameRate: 30, facingMode: 'user'
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        frameRate: { ideal: 30 },
+                        facingMode: 'user',
                     }
-                });
+                }) as MediaStream;
+
+                if (!mounted) {
+                    stream.getTracks().forEach(t => t.stop());
+                    return;
+                }
 
                 streamRef.current = stream;
                 setLocalStream(stream);
 
-                // 2. Setup PC
+                // 2. Setup Peer Connection
                 const iceServers = await fetchTurnServers();
-                const configuration = { iceServers, iceTransportPolicy: 'all' as const };
-
-                const peerConnection = new RTCPeerConnection(configuration);
+                const peerConnection = new RTCPeerConnection({ iceServers, iceTransportPolicy: 'all' });
                 pc.current = peerConnection;
-
-                // Add Trace for bandwidth/connection state
-                peerConnection.oniceconnectionstatechange = () => {
-                    console.log('[WebRTC] ICE State:', peerConnection.iceConnectionState);
-                    if (peerConnection.iceConnectionState === 'disconnected') {
-                        setStatus('Reconnecting...');
-                    } else if (peerConnection.iceConnectionState === 'failed') {
-                        setStatus('Connection Failed');
-                        Alert.alert('Call Failed', 'Connection lost.', [{ text: 'OK', onPress: endCall }]);
-                    } else if (peerConnection.iceConnectionState === 'connected') {
-                        setStatus('Connected');
-                    }
-                };
 
                 // Add local tracks
                 stream.getTracks().forEach(track => {
@@ -115,17 +118,29 @@ export default function VideoCallScreen() {
                 });
 
                 // Handle remote stream
-                peerConnection.ontrack = (event) => {
+                peerConnection.ontrack = (event: any) => {
                     if (event.streams && event.streams[0]) {
-                        console.log('[WebRTC] User stream received');
+                        console.log('[WebRTC] Remote stream received');
                         setRemoteStream(event.streams[0]);
+                        setStatus('Connected');
                     }
                 };
 
-                peerConnection.onicecandidate = (event) => {
+                peerConnection.onicecandidate = (event: any) => {
                     if (event.candidate && signaling.current) {
                         signaling.current.sendSignal(recipientId, 'ice-candidate', { candidate: event.candidate }, callId.current);
                     }
+                };
+
+                peerConnection.oniceconnectionstatechange = () => {
+                    const state = peerConnection.iceConnectionState;
+                    console.log('[WebRTC] ICE State:', state);
+                    if (state === 'disconnected') setStatus('Reconnecting...');
+                    if (state === 'failed') {
+                        setStatus('Connection Failed');
+                        Alert.alert('Call Failed', 'Connection lost.', [{ text: 'OK', onPress: endCall }]);
+                    }
+                    if (state === 'connected') setStatus('Connected');
                 };
 
                 // 3. Setup Signaling
@@ -142,10 +157,6 @@ export default function VideoCallScreen() {
                         if (pc.current) {
                             await pc.current.setRemoteDescription(new RTCSessionDescription(msg.sdp));
                         }
-                    } else if (msg.type === 'offer') {
-                        if (pc.current && pc.current.signalingState === 'stable') {
-                            // Renegotiation
-                        }
                     } else if (msg.type === 'ice-candidate') {
                         if (pc.current) {
                             await pc.current.addIceCandidate(new RTCIceCandidate(msg.candidate));
@@ -159,18 +170,19 @@ export default function VideoCallScreen() {
                 // 4. Connect
                 if (isCaller) {
                     setStatus('Calling...');
-                    const offerDescription = await peerConnection.createOffer({});
-                    await peerConnection.setLocalDescription(offerDescription);
-                    signaling.current.sendSignal(recipientId, 'offer', { sdp: offerDescription }, callId.current);
+                    const offerDesc = await peerConnection.createOffer({});
+                    await peerConnection.setLocalDescription(offerDesc);
+                    signaling.current.sendSignal(recipientId, 'offer', { sdp: offerDesc }, callId.current);
                 } else {
-                    // Callee
+                    // Callee: use the offer from route params
                     setStatus('Connecting...');
                     if (offer && offer.sdp) {
                         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer.sdp));
-                        const answerDescription = await peerConnection.createAnswer();
-                        await peerConnection.setLocalDescription(answerDescription);
-                        signaling.current.sendSignal(recipientId, 'answer', { sdp: answerDescription }, callId.current);
+                        const answerDesc = await peerConnection.createAnswer();
+                        await peerConnection.setLocalDescription(answerDesc);
+                        signaling.current.sendSignal(recipientId, 'answer', { sdp: answerDesc }, callId.current);
 
+                        // Flush pending ICE candidates
                         pendingCandidates.current.forEach(c => peerConnection.addIceCandidate(new RTCIceCandidate(c)));
                         pendingCandidates.current = [];
                     }
@@ -178,7 +190,7 @@ export default function VideoCallScreen() {
 
             } catch (err) {
                 console.error('Call setup failed:', err);
-                Alert.alert('Error', 'Failed to start call');
+                Alert.alert('Error', 'Failed to start call. Check camera/mic permissions.');
                 navigation.goBack();
             }
         };
@@ -186,41 +198,67 @@ export default function VideoCallScreen() {
         startCall();
 
         return () => {
-            // Immediate cleanup on unmount
+            mounted = false;
             if (streamRef.current) {
                 streamRef.current.getTracks().forEach(t => t.stop());
-                streamRef.current.release();
             }
             if (pc.current) pc.current.close();
             if (signaling.current) signaling.current.destroy();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Run ONCE on mount
+    }, [hasAccepted]);
 
     const toggleMic = () => {
         if (localStream) {
-            localStream.getAudioTracks().forEach(t => t.enabled = !t.enabled);
-            setIsMuted(!isMuted);
+            localStream.getAudioTracks().forEach(t => { t.enabled = !t.enabled; });
+            setIsMuted(prev => !prev);
         }
     };
 
     const toggleCamera = () => {
         if (localStream) {
-            localStream.getVideoTracks().forEach(t => t.enabled = !t.enabled);
-            setIsCameraOff(!isCameraOff);
+            localStream.getVideoTracks().forEach(t => { t.enabled = !t.enabled; });
+            setIsCameraOff(prev => !prev);
         }
     };
 
     const switchCamera = () => {
         if (localStream) {
             localStream.getVideoTracks().forEach(track => {
-                // react-native-webrtc specific method
-                // @ts-ignore
-                track._switchCamera();
+                // @ts-ignore - react-native-webrtc specific
+                if (track._switchCamera) track._switchCamera();
             });
         }
     };
 
+    // ---- INCOMING CALL SCREEN ----
+    if (!hasAccepted) {
+        return (
+            <View style={styles.incomingContainer}>
+                <View style={styles.incomingCard}>
+                    <View style={styles.avatarCircle}>
+                        <Text style={styles.avatarEmoji}>📞</Text>
+                    </View>
+                    <Text style={styles.incomingName}>{name}</Text>
+                    <Text style={styles.incomingSubtitle}>Incoming Video Call...</Text>
+
+                    <View style={styles.incomingButtons}>
+                        <TouchableOpacity style={styles.declineButton} onPress={handleDecline}>
+                            <PhoneOff color="white" size={32} />
+                            <Text style={styles.btnLabel}>Decline</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.acceptButton} onPress={handleAccept}>
+                            <VideoIcon color="white" size={32} />
+                            <Text style={styles.btnLabel}>Answer</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+        );
+    }
+
+    // ---- ACTIVE CALL SCREEN ----
     return (
         <View style={styles.container}>
             {/* Remote Video (Full Screen) */}
@@ -228,17 +266,17 @@ export default function VideoCallScreen() {
                 <RTCView
                     streamURL={remoteStream.toURL()}
                     style={styles.remoteVideo}
-                    objectFit="cover"
+                    objectFit="contain"
                     zOrder={0}
                 />
             ) : (
                 <View style={styles.remotePlaceholder}>
-                    <Text style={styles.statusText}>{status}</Text>
                     <Text style={styles.nameText}>{name}</Text>
+                    <Text style={styles.statusText}>{status}</Text>
                 </View>
             )}
 
-            {/* Local Video (Floating PiP-like) */}
+            {/* Local Video (Self View - Portrait) */}
             <View style={styles.localVideoContainer}>
                 {localStream && !isCameraOff ? (
                     <RTCView
@@ -246,18 +284,23 @@ export default function VideoCallScreen() {
                         style={styles.localVideo}
                         objectFit="cover"
                         zOrder={1}
+                        mirror={true}
                     />
                 ) : (
-                    <View style={[styles.localVideo, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}>
+                    <View style={[styles.localVideo, styles.cameraOffPlaceholder]}>
                         <VideoOff color="white" size={20} />
                     </View>
                 )}
             </View>
 
             {/* Controls Overlay */}
-            <SafeAreaView style={styles.controlsContainer}>
+            <SafeAreaView style={styles.controlsContainer} edges={['bottom']}>
                 <TouchableOpacity style={styles.controlButton} onPress={toggleMic}>
                     {isMuted ? <MicOff color="white" size={24} /> : <Mic color="white" size={24} />}
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[styles.controlButton, styles.endButton]} onPress={endCall}>
+                    <PhoneOff color="white" size={30} />
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.controlButton} onPress={toggleCamera}>
@@ -267,24 +310,92 @@ export default function VideoCallScreen() {
                 <TouchableOpacity style={styles.controlButton} onPress={switchCamera}>
                     <SwitchCamera color="white" size={24} />
                 </TouchableOpacity>
-
-                <TouchableOpacity style={[styles.controlButton, styles.endButton]} onPress={endCall}>
-                    <PhoneOff color="white" size={30} />
-                </TouchableOpacity>
             </SafeAreaView>
 
-            {/* Minimize/Back Button */}
-            <TouchableOpacity style={styles.minimizeButton} onPress={() => {
-                // Just go back to chat, effectively minimizing call UI if we handled background state
-                // For now, this just warns user or works as PiP entry trigger if implemented
-                navigation.goBack();
-            }}>
-                <Minimize2 color="white" size={24} />
-            </TouchableOpacity>
+            {/* Status label when connected */}
+            {remoteStream && (
+                <View style={styles.statusBadge}>
+                    <Text style={styles.statusBadgeText}>{status}</Text>
+                </View>
+            )}
         </View>
     );
 }
+
 const styles = StyleSheet.create({
+    // --- Incoming Call ---
+    incomingContainer: {
+        flex: 1,
+        backgroundColor: '#0f172a',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+    },
+    incomingCard: {
+        backgroundColor: '#1e293b',
+        borderRadius: 24,
+        padding: 32,
+        alignItems: 'center',
+        width: '100%',
+        maxWidth: 340,
+    },
+    avatarCircle: {
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: '#334155',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    avatarEmoji: {
+        fontSize: 48,
+    },
+    incomingName: {
+        fontSize: 26,
+        fontWeight: 'bold',
+        color: 'white',
+        marginBottom: 8,
+    },
+    incomingSubtitle: {
+        fontSize: 15,
+        color: '#94a3b8',
+        marginBottom: 40,
+    },
+    incomingButtons: {
+        flexDirection: 'row',
+        gap: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    declineButton: {
+        alignItems: 'center',
+        gap: 8,
+        backgroundColor: '#ef4444',
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        justifyContent: 'center',
+    },
+    acceptButton: {
+        alignItems: 'center',
+        gap: 8,
+        backgroundColor: '#22c55e',
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        justifyContent: 'center',
+    },
+    btnLabel: {
+        color: 'white',
+        fontSize: 13,
+        fontWeight: '600',
+        marginTop: 4,
+        position: 'absolute',
+        bottom: -24,
+    },
+
+    // --- Active Call ---
     container: {
         flex: 1,
         backgroundColor: '#0f172a',
@@ -293,36 +404,34 @@ const styles = StyleSheet.create({
         flex: 1,
         width: '100%',
         height: '100%',
+        backgroundColor: '#000',
     },
     remotePlaceholder: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: '#0f172a',
     },
     statusText: {
         color: '#94a3b8',
         fontSize: 16,
-        marginBottom: 8,
+        marginTop: 8,
     },
     nameText: {
         color: 'white',
-        fontSize: 24,
+        fontSize: 28,
         fontWeight: 'bold',
     },
     localVideoContainer: {
         position: 'absolute',
         top: 60,
-        right: 20,
-        width: 100,
-        height: 150,
+        right: 16,
+        width: 90,
+        height: 140,
         borderRadius: 12,
         overflow: 'hidden',
         borderWidth: 2,
         borderColor: '#334155',
-        shadowColor: 'black',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.5,
-        shadowRadius: 4,
         elevation: 5,
         zIndex: 10,
     },
@@ -330,40 +439,48 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
     },
+    cameraOffPlaceholder: {
+        backgroundColor: '#1e293b',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     controlsContainer: {
         position: 'absolute',
-        bottom: 30,
+        bottom: 0,
         left: 0,
         right: 0,
         flexDirection: 'row',
         justifyContent: 'space-evenly',
         alignItems: 'center',
-        paddingHorizontal: 20,
+        paddingVertical: 20,
+        paddingHorizontal: 16,
+        backgroundColor: 'rgba(0,0,0,0.5)',
     },
     controlButton: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: 'rgba(51, 65, 85, 0.8)',
+        width: 54,
+        height: 54,
+        borderRadius: 27,
+        backgroundColor: 'rgba(51, 65, 85, 0.9)',
         justifyContent: 'center',
         alignItems: 'center',
     },
     endButton: {
         backgroundColor: '#ef4444',
-        width: 60,
-        height: 60,
-        borderRadius: 30,
+        width: 64,
+        height: 64,
+        borderRadius: 32,
     },
-    minimizeButton: {
+    statusBadge: {
         position: 'absolute',
-        top: 50,
-        left: 20,
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(0,0,0,0.3)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        zIndex: 10
-    }
+        top: 16,
+        alignSelf: 'center',
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    statusBadgeText: {
+        color: 'white',
+        fontSize: 12,
+    },
 });
