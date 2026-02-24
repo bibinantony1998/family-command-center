@@ -1,0 +1,17 @@
+🎉 Version 2.0 — Major Update!
+
+We're thrilled to bring you Family Command Center v2.0, a major milestone packed with powerful new features and fixes!
+
+✨ What's New
+• 🎥 Video & Voice Calls — Real-time video and audio calls between family members using WebRTC
+• 📎 P2P File Sharing — Send photos, videos, and files directly between devices without cloud storage limits
+• 🔐 End-to-End Encryption — All messages are now encrypted, ensuring complete privacy for your family chats
+• 🔔 Push Notifications — Never miss a message with improved Firebase-powered push notifications
+
+🐛 Bug Fixes & Improvements
+• Fixed Google Sign-In deep link callback for smoother login
+• Improved expense split calculation accuracy
+• Better keyboard handling in the chat screen
+• Enhanced stability and performance across all features
+
+Thank you for using Family Command Center! ❤️
