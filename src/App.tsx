@@ -23,6 +23,15 @@ import PatternMemory from './pages/games/PatternMemory';
 import SchulteTable from './pages/games/SchulteTable';
 import NumberMemory from './pages/games/NumberMemory';
 import WhackAMole from './pages/games/WhackAMole';
+import BallSort from './pages/games/BallSort';
+import NBack from './pages/games/NBack';
+import MentalRotation from './pages/games/MentalRotation';
+import PathwayMaze from './pages/games/PathwayMaze';
+import NumberSequence from './pages/games/NumberSequence';
+import DualTask from './pages/games/DualTask';
+import VisualSearch from './pages/games/VisualSearch';
+import AnagramSolver from './pages/games/AnagramSolver';
+import TrailMaking from './pages/games/TrailMaking';
 import Profile from './pages/Profile';
 import Rewards from './pages/Rewards';
 import Expenses from './pages/Expenses';
@@ -87,8 +96,16 @@ function AuthenticatedAppContent() {
         <Route path="games/pattern-memory" element={<PatternMemory />} />
         <Route path="games/schulte-table" element={<SchulteTable />} />
         <Route path="games/number-memory" element={<NumberMemory />} />
-        <Route path="games/number-memory" element={<NumberMemory />} />
         <Route path="games/whack-a-mole" element={<WhackAMole />} />
+        <Route path="games/ball-sort" element={<BallSort />} />
+        <Route path="games/n-back" element={<NBack />} />
+        <Route path="games/mental-rotation" element={<MentalRotation />} />
+        <Route path="games/pathway-maze" element={<PathwayMaze />} />
+        <Route path="games/number-sequence" element={<NumberSequence />} />
+        <Route path="games/dual-task" element={<DualTask />} />
+        <Route path="games/visual-search" element={<VisualSearch />} />
+        <Route path="games/anagram-solver" element={<AnagramSolver />} />
+        <Route path="games/trail-making" element={<TrailMaking />} />
         <Route path="rewards" element={<Rewards />} />
         <Route path="profile" element={<Profile />} />
         <Route path="chat" element={<Chat />} />

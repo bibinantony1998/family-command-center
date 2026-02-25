@@ -19,6 +19,15 @@ export type RootStackParamList = {
     Game_WaterJugs: undefined;
     Game_WhackAMole: undefined;
     Game_WordScramble: undefined;
+    Game_BallSort: undefined;
+    Game_NBack: undefined;
+    Game_MentalRotation: undefined;
+    Game_NumberSequence: undefined;
+    Game_PathwayMaze: undefined;
+    Game_DualTask: undefined;
+    Game_VisualSearch: undefined;
+    Game_AnagramSolver: undefined;
+    Game_TrailMaking: undefined;
     // Expenses
     AddExpense: { id?: string } | undefined;
     SettleUp: undefined;

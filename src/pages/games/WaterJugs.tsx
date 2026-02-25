@@ -15,16 +15,36 @@ interface Jug {
 }
 
 const LEVELS_CONFIG = [
-    { target: 4, jugs: [5, 3] },      // Level 1
-    { target: 1, jugs: [3, 2] },      // Level 2
-    { target: 4, jugs: [8, 5, 3] },   // Level 3
-    { target: 5, jugs: [12, 7, 5] },  // Level 4
-    { target: 6, jugs: [8, 5] },      // Level 5
-    { target: 2, jugs: [9, 4] },      // Level 6
-    { target: 7, jugs: [10, 6, 5] },  // Level 7
-    { target: 9, jugs: [13, 8, 5] },  // Level 8
-    { target: 1, jugs: [5, 2] },      // Level 9
-    { target: 12, jugs: [24, 13, 11] }// Level 10
+    // ── Beginner (1–4) ────────────────────────────────────
+    { target: 4, jugs: [5, 3] },                // Level 1  – classic 2-jug
+    { target: 1, jugs: [3, 2] },                // Level 2
+    { target: 4, jugs: [8, 5, 3] },             // Level 3  – intro 3rd jug
+    { target: 5, jugs: [12, 7, 5] },            // Level 4
+    // ── Easy (5–7) ────────────────────────────────────────
+    { target: 6, jugs: [8, 5] },                // Level 5
+    { target: 2, jugs: [9, 4] },                // Level 6
+    { target: 7, jugs: [10, 6, 5] },            // Level 7
+    // ── Medium (8–12) ─────────────────────────────────────
+    { target: 9, jugs: [13, 8, 5] },            // Level 8
+    { target: 1, jugs: [5, 2] },                // Level 9
+    { target: 12, jugs: [24, 13, 11] },          // Level 10
+    { target: 3, jugs: [11, 7, 4] },            // Level 11 – GCD trickery
+    { target: 8, jugs: [15, 11, 7] },           // Level 12
+    { target: 10, jugs: [17, 13, 7] },           // Level 13 – large prime-cap jugs
+    { target: 5, jugs: [14, 9, 6] },            // Level 14
+    { target: 14, jugs: [20, 13, 9, 6] },        // Level 15 – first 4-jug level
+    // ── Hard (16–20) ──────────────────────────────────────
+    { target: 6, jugs: [19, 13, 7] },           // Level 16 – needs 13+ steps
+    { target: 11, jugs: [23, 17, 13] },          // Level 17
+    { target: 4, jugs: [18, 11, 7, 5] },        // Level 18 – 4-jug, small target
+    { target: 7, jugs: [25, 16, 11, 9] },       // Level 19
+    { target: 13, jugs: [29, 17, 13, 8] },       // Level 20
+    // ── Expert (21–25) ────────────────────────────────────
+    { target: 3, jugs: [22, 15, 8, 7] },        // Level 21 – GCD=1, tiny target
+    { target: 9, jugs: [31, 23, 14, 11] },      // Level 22
+    { target: 16, jugs: [35, 23, 18, 13] },      // Level 23
+    { target: 5, jugs: [37, 29, 16, 11] },      // Level 24 – large prime caps
+    { target: 1, jugs: [41, 31, 22, 17] },      // Level 25 – endgame
 ];
 
 export default function WaterJugs() {

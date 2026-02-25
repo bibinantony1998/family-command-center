@@ -93,6 +93,17 @@ export default function RootNavigator() {
                         <Stack.Screen name="Game_WaterJugs" component={require('../screens/games/WaterJugs').default} />
                         <Stack.Screen name="Game_WhackAMole" component={require('../screens/games/WhackAMole').default} />
                         <Stack.Screen name="Game_WordScramble" component={require('../screens/games/WordScramble').default} />
+
+                        {/* Games Batch 5 — new games */}
+                        <Stack.Screen name="Game_BallSort" component={require('../screens/games/BallSort').default} />
+                        <Stack.Screen name="Game_NBack" component={require('../screens/games/NBack').default} />
+                        <Stack.Screen name="Game_MentalRotation" component={require('../screens/games/MentalRotation').default} />
+                        <Stack.Screen name="Game_NumberSequence" component={require('../screens/games/NumberSequence').default} />
+                        <Stack.Screen name="Game_PathwayMaze" component={require('../screens/games/PathwayMaze').default} />
+                        <Stack.Screen name="Game_DualTask" component={require('../screens/games/DualTask').default} />
+                        <Stack.Screen name="Game_VisualSearch" component={require('../screens/games/VisualSearch').default} />
+                        <Stack.Screen name="Game_AnagramSolver" component={require('../screens/games/AnagramSolver').default} />
+                        <Stack.Screen name="Game_TrailMaking" component={require('../screens/games/TrailMaking').default} />
                     </>
                 )}
 
