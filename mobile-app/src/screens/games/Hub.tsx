@@ -6,7 +6,8 @@ import { RootStackParamList } from '../../navigation/types';
 import {
     Palette, Dna, Binary, Grid, Calculator, Zap, Table, Mic2, Hexagon,
     GlassWater, Hammer, Type, FlaskConical, Brain, Hash, MapPin,
-    Eye, Shuffle, GitFork, RotateCcw
+    Eye, Shuffle, GitFork, RotateCcw, Grid2x2, Keyboard, Tangent,
+    Link, Lock, Dice5, Lightbulb, Link2
 } from 'lucide-react-native';
 
 type GameNavProp = StackNavigationProp<RootStackParamList>;
@@ -33,6 +34,9 @@ const GAMES: GameDef[] = [
     { id: 'Game_BallSort', name: 'Ball Sort', icon: FlaskConical, color: '#a855f7', category: '🧩 Problem Solving' },
     { id: 'Game_NumberSequence', name: 'Num Sequence', icon: Hash, color: '#10b981', category: '🧩 Problem Solving' },
     { id: 'Game_PathwayMaze', name: 'Pathway Maze', icon: MapPin, color: '#0d9488', category: '🧩 Problem Solving' },
+    { id: 'Game_SlidingPuzzle', name: 'Sliding Puzzle', icon: Grid2x2, color: '#6366f1', category: '🧩 Problem Solving' },
+    { id: 'Game_RiverCrossing', name: 'River Crossing', icon: GitFork, color: '#0891b2', category: '🧩 Problem Solving' },
+    { id: 'Game_MatchstickMath', name: 'Matchstick Math', icon: Tangent, color: '#d97706', category: '🧩 Problem Solving' },
     // Attention
     { id: 'Game_ReflexChallenge', name: 'Reflex', icon: Zap, color: '#ef4444', category: '⚡ Attention' },
     { id: 'Game_SchulteTable', name: 'Schulte Table', icon: Table, color: '#6366f1', category: '⚡ Attention' },
@@ -43,9 +47,19 @@ const GAMES: GameDef[] = [
     // Verbal
     { id: 'Game_WordScramble', name: 'Word Scramble', icon: Type, color: '#14b8a6', category: '📝 Verbal' },
     { id: 'Game_AnagramSolver', name: 'Anagram', icon: Shuffle, color: '#d97706', category: '📝 Verbal' },
+    { id: 'Game_Hangman', name: 'Hangman', icon: Tangent, color: '#be185d', category: '📝 Verbal' },
+    { id: 'Game_WordConnections', name: 'Word Connect', icon: Link2, color: '#0369a1', category: '📝 Verbal' },
+    { id: 'Game_WordChain', name: 'Word Chain', icon: Link, color: '#7c3aed', category: '📝 Verbal' },
     // Spatial
     { id: 'Game_ColorChaos', name: 'Color Chaos', icon: Palette, color: '#f43f5e', category: '🔷 Spatial' },
     { id: 'Game_MentalRotation', name: 'Mental Rotation', icon: RotateCcw, color: '#06b6d4', category: '🔷 Spatial' },
+    // Logic & Deduction
+    { id: 'Game_Sudoku', name: 'Sudoku', icon: Grid2x2, color: '#1d4ed8', category: '🔬 Logic' },
+    { id: 'Game_CodeBreaker', name: 'Code Breaker', icon: Lock, color: '#6d28d9', category: '🔬 Logic' },
+    { id: 'Game_LightsOut', name: 'Lights Out', icon: Lightbulb, color: '#b45309', category: '🔬 Logic' },
+    { id: 'Game_2048', name: '2048', icon: Dice5, color: '#c2410c', category: '🔬 Logic' },
+    // Speed & Reflex
+    { id: 'Game_TypingSpeed', name: 'Typing Speed', icon: Keyboard, color: '#0f766e', category: '⚡ Attention' },
 ];
 
 const CATEGORIES = [...new Set(GAMES.map(g => g.category))];

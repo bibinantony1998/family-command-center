@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Linking } from 'react-native';
 import { ChatMessage } from '../../types/schema';
-import { CheckCheck, Clock, Download } from 'lucide-react-native';
+import { CheckCheck, Clock, Download, Play } from 'lucide-react-native';
 
 interface MessageBubbleProps {
     message: ChatMessage & { sender?: { display_name: string; avatar_url?: string } };
@@ -70,7 +70,10 @@ export const MessageBubble = ({ message, isOwn, showSenderName, onLongPress }: M
         return (
             <View style={attachStyles.container}>
                 {message.attachment_type === 'image' && (
-                    <TouchableOpacity onPress={() => Linking.openURL(message.attachment_blob_url!)}>
+                    <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={() => Linking.openURL(message.attachment_blob_url!)}
+                    >
                         <Image
                             source={{ uri: message.attachment_blob_url! }}
                             style={attachStyles.image}
@@ -78,22 +81,38 @@ export const MessageBubble = ({ message, isOwn, showSenderName, onLongPress }: M
                         />
                     </TouchableOpacity>
                 )}
+
                 {message.attachment_type === 'video' && (
                     <TouchableOpacity
-                        style={attachStyles.mediaPlaceholder}
+                        activeOpacity={0.9}
+                        style={attachStyles.videoContainer}
                         onPress={() => Linking.openURL(message.attachment_blob_url!)}
                     >
-                        <Text style={attachStyles.mediaIcon}>🎬</Text>
-                        <Text style={attachStyles.mediaLabel}>Tap to play video</Text>
+                        {/* Render the saved file URI as a thumbnail (shows first frame on iOS/Android) */}
+                        <Image
+                            source={{ uri: message.attachment_blob_url! }}
+                            style={StyleSheet.absoluteFillObject}
+                            resizeMode="cover"
+                        />
+                        {/* Dark overlay */}
+                        <View style={attachStyles.videoOverlay} />
+                        {/* Play button */}
+                        <View style={attachStyles.playButtonBubble}>
+                            <Play size={20} color="white" fill="white" />
+                        </View>
+                        <View style={attachStyles.videoBadge}>
+                            <Text style={attachStyles.videoBadgeText}>VIDEO</Text>
+                        </View>
                     </TouchableOpacity>
                 )}
+
                 {message.attachment_type === 'audio' && (
                     <TouchableOpacity
-                        style={attachStyles.mediaPlaceholder}
+                        style={[attachStyles.mediaPlaceholder, { backgroundColor: isOwn ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)' }]}
                         onPress={() => Linking.openURL(message.attachment_blob_url!)}
                     >
                         <Text style={attachStyles.mediaIcon}>🎵</Text>
-                        <Text style={attachStyles.mediaLabel}>Tap to play audio</Text>
+                        <Text style={[attachStyles.mediaLabel, isOwn ? { color: 'rgba(255,255,255,0.8)' } : {}]}>Tap to play audio</Text>
                     </TouchableOpacity>
                 )}
 
@@ -276,6 +295,47 @@ const attachStyles = StyleSheet.create({
         width: '100%',
         height: 180,
         borderRadius: 12,
+    },
+    videoContainer: {
+        width: '100%',
+        height: 160,
+        borderRadius: 12,
+        overflow: 'hidden',
+        backgroundColor: '#0f172a',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    videoOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.3)',
+    },
+    playButtonBubble: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(99,102,241,0.9)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#6366f1',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.4,
+        shadowRadius: 6,
+        elevation: 6,
+    },
+    videoBadge: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        backgroundColor: 'rgba(0,0,0,0.55)',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+    },
+    videoBadgeText: {
+        color: 'white',
+        fontSize: 9,
+        fontWeight: '700',
+        letterSpacing: 1,
     },
     mediaPlaceholder: {
         backgroundColor: 'rgba(0,0,0,0.1)',

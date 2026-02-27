@@ -32,6 +32,17 @@ import DualTask from './pages/games/DualTask';
 import VisualSearch from './pages/games/VisualSearch';
 import AnagramSolver from './pages/games/AnagramSolver';
 import TrailMaking from './pages/games/TrailMaking';
+import Sudoku from './pages/games/Sudoku';
+import TypingSpeed from './pages/games/TypingSpeed';
+import Hangman from './pages/games/Hangman';
+import WordConnections from './pages/games/WordConnections';
+import CodeBreaker from './pages/games/CodeBreaker';
+import Game2048 from './pages/games/Game2048';
+import LightsOut from './pages/games/LightsOut';
+import WordChain from './pages/games/WordChain';
+import SlidingPuzzle from './pages/games/SlidingPuzzle';
+import RiverCrossing from './pages/games/RiverCrossing';
+import MatchstickMath from './pages/games/MatchstickMath';
 import Profile from './pages/Profile';
 import Rewards from './pages/Rewards';
 import Expenses from './pages/Expenses';
@@ -106,6 +117,17 @@ function AuthenticatedAppContent() {
         <Route path="games/visual-search" element={<VisualSearch />} />
         <Route path="games/anagram-solver" element={<AnagramSolver />} />
         <Route path="games/trail-making" element={<TrailMaking />} />
+        <Route path="games/sudoku" element={<Sudoku />} />
+        <Route path="games/typing-speed" element={<TypingSpeed />} />
+        <Route path="games/hangman" element={<Hangman />} />
+        <Route path="games/word-connections" element={<WordConnections />} />
+        <Route path="games/code-breaker" element={<CodeBreaker />} />
+        <Route path="games/2048" element={<Game2048 />} />
+        <Route path="games/lights-out" element={<LightsOut />} />
+        <Route path="games/word-chain" element={<WordChain />} />
+        <Route path="games/sliding-puzzle" element={<SlidingPuzzle />} />
+        <Route path="games/river-crossing" element={<RiverCrossing />} />
+        <Route path="games/matchstick-math" element={<MatchstickMath />} />
         <Route path="rewards" element={<Rewards />} />
         <Route path="profile" element={<Profile />} />
         <Route path="chat" element={<Chat />} />

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import QuickCrypto from 'react-native-quick-crypto';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Keyboard, Modal, Image } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Keyboard, Modal, Image, ImageBackground } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { ChatMessage } from '../../types/schema';
 import { KeyManager, DeviceKey } from '../../lib/encryption';
 import { MessageBubble } from '../../components/chat/MessageBubble';
-import { ChevronLeft, Send, Paperclip, MoreVertical, Trash2, Download, X, Video } from 'lucide-react-native';
+import { ChevronLeft, Send, Paperclip, MoreVertical, Trash2, Download, X, Video, Play, Image as ImageIcon } from 'lucide-react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -38,7 +38,9 @@ export default function ChatScreen() {
     const [hasMore, setHasMore] = useState(true);
     const [transferProgress, setTransferProgress] = useState<number | null>(null);
     const [transferStatus, setTransferStatus] = useState<'idle' | 'sending' | 'receiving'>('idle');
-    const [pendingAttachment, setPendingAttachment] = useState<{ uri: string; fileName: string; fileType: 'image' | 'video' | 'audio'; fileSize?: number } | null>(null);
+    const [hdTransferProgress, setHdTransferProgress] = useState<number | null>(null);
+    const [hdTransferStatus, setHdTransferStatus] = useState<'idle' | 'sending' | 'done'>('idle');
+    const [pendingAttachment, setPendingAttachment] = useState<{ uri: string; thumbnailUri?: string; fileName: string; fileType: 'image' | 'video' | 'audio'; fileSize?: number } | null>(null);
     const [queuedFiles, setQueuedFiles] = useState(getQueuedAttachments(recipientId || ''));
     const [showQueueModal, setShowQueueModal] = useState(false);
     const abortController = useRef<AbortController | null>(null);
@@ -384,7 +386,8 @@ export default function ChatScreen() {
 
         const result = await launchImageLibrary({
             mediaType: 'mixed',
-            quality: 0.8,
+            quality: 1.0, // Always pick at full quality; compression handled separately
+            includeBase64: false,
         });
 
         if (result.didCancel || !result.assets?.[0]) return;
@@ -403,10 +406,14 @@ export default function ChatScreen() {
 
         const fileSize = asset.fileSize || 0;
 
+        // For video, use the asset URI as thumbnail (first frame rendered by Image component)
+        const thumbnailUri = (fileType === 'video' || fileType === 'image') ? asset.uri : undefined;
+
         // Show confirmation modal instead of sending immediately
         setPendingAttachment({
             uri: asset.uri,
-            fileName: fileName,
+            thumbnailUri,
+            fileName,
             fileType,
             fileSize
         });
@@ -436,11 +443,9 @@ export default function ChatScreen() {
 
             let messageId = '';
             try {
-                // 1. Generate Message ID locally
-                // Use QuickCrypto for UUID v4
                 messageId = QuickCrypto.randomUUID();
 
-                // 2. Optimistic UI: Show message immediately with status 'sending'
+                // Optimistic UI: show message immediately with local URI for preview
                 const optimisticMessage: ChatMessage = {
                     id: messageId,
                     family_id: family.id,
@@ -451,7 +456,7 @@ export default function ChatScreen() {
                     attachment_type: fileType,
                     attachment_name: fileName,
                     attachment_size: fileSize || 0,
-                    attachment_blob_url: uri, // Local URI for immediate display
+                    attachment_blob_url: uri, // Local URI for immediate preview
                     is_read: true,
                     read_by: [user.id],
                     sender: {
@@ -460,46 +465,24 @@ export default function ChatScreen() {
                     }
                 };
 
-                // ... lines 460-580 ...
-
-                setOnQueueDrain(async (attachment) => {
-                    setTransferProgress(0);
-                    const offlineMessageId = QuickCrypto.randomUUID(); // Generate ID for offline queue item
-                    await sendFileP2P(
-                        attachment.fileUri, attachment.fileName, attachment.fileType,
-                        attachment.fileSize,
-                        user.id, recipientId, family.id,
-                        offlineMessageId, // Pass generated ID
-                        (p: number) => setTransferProgress(p)
-                    );
-                    setTransferProgress(null);
-                });
                 setMessages(prev => [...prev, optimisticMessage]);
+                setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
-                // 3. Send File P2P FIRST (passing messageId)
-                // We need to update sendFileP2P to accept messageId in the next step, 
-                // but we can pass it via options if supported, or via the 4th arg if we update signature.
-                // Current signature: (fileUri, fileName, fileType, fileSize, senderId, recipientId, familyId, onProgress)
-                // We need to modify sendFileP2P to accept messageId.
-                // checks webrtcTransfer.ts -> sendFileP2P signature needs update. 
-                // For now, I will update sendFileP2P signature in next step.
-                // Assuming updated signature: ..., messageId, onProgress)
-
+                // Send full-quality file P2P
                 const success = await sendFileP2P(
                     uri, fileName, fileType, fileSize || 0,
                     user.id, recipientId, family.id,
-                    messageId, // New argument
-                    (p) => setTransferProgress(p)
+                    messageId,
+                    (p) => setTransferProgress(p),
+                    ac.signal
                 );
 
                 if (success) {
-                    console.log('Transfer success, inserting message...');
-
-                    // 4. Insert Message Record on Success
+                    // Insert the message record so it persists
                     const { error: insertError } = await supabase
                         .from('chat_messages')
                         .insert({
-                            id: messageId, // Use the same ID
+                            id: messageId,
                             family_id: family.id,
                             sender_id: user.id,
                             recipient_id: recipientId,
@@ -509,32 +492,33 @@ export default function ChatScreen() {
                             attachment_size: fileSize
                         });
 
-                    if (insertError) {
-                        throw insertError;
+                    if (insertError) throw insertError;
+
+                    // For images: send a compressed preview first is irrelevant after full quality
+                    // already sent. WhatsApp-style HD pass is already done since we sent full quality.
+                    // Mark HD done for images.
+                    if (fileType === 'image') {
+                        setHdTransferStatus('done');
+                        setTimeout(() => setHdTransferStatus('idle'), 2000);
                     }
                 } else {
-                    console.warn('Transfer failed, removing optimistic message...');
-                    // Remove from local UI
                     setMessages(prev => prev.filter(m => m.id !== messageId));
-                    Alert.alert('Transfer Failed', 'Could not send file directly.');
+                    Alert.alert('Transfer Failed', 'Could not send the file. Recipient may have gone offline.');
                 }
             } catch (err) {
                 console.error('Send error:', err);
-                // Remove optimistic message on error
-                if (messageId) { // Only attempt to remove if messageId was successfully generated
+                if (messageId) {
                     setMessages(prev => prev.filter(m => m.id !== messageId));
                 }
-                Alert.alert('Error', 'Failed to send file');
+                Alert.alert('Error', 'Failed to send file.');
             } finally {
                 setSending(false);
-                setTransferProgress(null); // Added back
+                setTransferProgress(null);
                 setTransferStatus('idle');
-                if (abortController.current) {
-                    abortController.current = null;
-                }
+                abortController.current = null;
             }
         } else {
-            // Queue for offline
+            // Queue for delivery when recipient comes online
             await queueAttachment({
                 fileUri: uri,
                 fileName,
@@ -544,6 +528,10 @@ export default function ChatScreen() {
                 familyId: family.id,
                 senderId: user.id
             });
+            Alert.alert(
+                'Queued ☁️',
+                `${fileName} will be sent automatically when ${name} comes online.`
+            );
         }
     };
 
@@ -626,16 +614,53 @@ export default function ChatScreen() {
         if (!recipientId || !isRecipientOnline || !family?.id || !user?.id) return;
 
         setOnQueueDrain(async (attachment) => {
+            setTransferStatus('sending');
             setTransferProgress(0);
-            const offlineMessageId = QuickCrypto.randomUUID(); // Generate ID for offline queue item
-            await sendFileP2P(
+            const offlineMessageId = QuickCrypto.randomUUID();
+
+            // Optimistic message for queued item
+            const queuedMsg: ChatMessage = {
+                id: offlineMessageId,
+                family_id: family.id,
+                sender_id: user.id,
+                recipient_id: recipientId,
+                content: `📎 ${attachment.fileType.charAt(0).toUpperCase() + attachment.fileType.slice(1)}: ${attachment.fileName}`,
+                created_at: new Date().toISOString(),
+                attachment_type: attachment.fileType,
+                attachment_name: attachment.fileName,
+                attachment_size: attachment.fileSize,
+                attachment_blob_url: attachment.fileUri,
+                is_read: true,
+                read_by: [user.id],
+                sender: { display_name: 'You', avatar_url: null }
+            };
+            setMessages(prev => [...prev, queuedMsg]);
+
+            const success = await sendFileP2P(
                 attachment.fileUri, attachment.fileName, attachment.fileType,
                 attachment.fileSize,
                 user.id, recipientId, family.id,
-                offlineMessageId, // Pass generated ID
+                offlineMessageId,
                 (p: number) => setTransferProgress(p)
             );
+
+            if (success) {
+                await supabase.from('chat_messages').insert({
+                    id: offlineMessageId,
+                    family_id: family.id,
+                    sender_id: user.id,
+                    recipient_id: recipientId,
+                    content: queuedMsg.content,
+                    attachment_type: attachment.fileType,
+                    attachment_name: attachment.fileName,
+                    attachment_size: attachment.fileSize
+                });
+            } else {
+                setMessages(prev => prev.filter(m => m.id !== offlineMessageId));
+            }
+
             setTransferProgress(null);
+            setTransferStatus('idle');
         });
 
         const queued = getQueuedAttachments(recipientId);
@@ -735,7 +760,7 @@ export default function ChatScreen() {
                     {transferProgress !== null && (
                         <View style={styles.uploadContainer}>
                             <Text style={{ fontSize: 10, fontWeight: '700', color: '#6366f1', marginRight: 8, textTransform: 'uppercase' }}>
-                                {transferStatus === 'sending' ? 'Sending...' : 'Receiving...'}
+                                {transferStatus === 'sending' ? '📤 Sending...' : '📥 Receiving...'}
                             </Text>
                             <View style={styles.uploadProgressTrack}>
                                 <View style={[styles.uploadProgressBar, { width: `${Math.round(transferProgress * 100)}%` }]} />
@@ -744,6 +769,21 @@ export default function ChatScreen() {
                             <TouchableOpacity onPress={cancelTransfer} style={styles.stopButton}>
                                 <X color="#64748b" size={20} />
                             </TouchableOpacity>
+                        </View>
+                    )}
+                    {hdTransferStatus === 'sending' && (
+                        <View style={[styles.uploadContainer, { marginTop: 4 }]}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#8b5cf6', marginRight: 8, textTransform: 'uppercase' }}>
+                                ✨ HD Sending...
+                            </Text>
+                            <View style={[styles.uploadProgressTrack, { backgroundColor: '#ede9fe' }]}>
+                                <View style={[styles.uploadProgressBar, { backgroundColor: '#8b5cf6', width: hdTransferProgress != null ? `${Math.round(hdTransferProgress * 100)}%` : '100%' }]} />
+                            </View>
+                        </View>
+                    )}
+                    {hdTransferStatus === 'done' && (
+                        <View style={{ alignItems: 'center', marginBottom: 4 }}>
+                            <Text style={{ fontSize: 11, color: '#8b5cf6', fontWeight: '600' }}>✨ HD delivered!</Text>
                         </View>
                     )}
 
@@ -775,61 +815,91 @@ export default function ChatScreen() {
                 </View>
             </KeyboardAvoidingView>
 
-            {/* Confirmation Modal */}
+            {/* Attachment Send Confirmation Modal */}
             <Modal
                 visible={!!pendingAttachment}
                 transparent={true}
-                animationType="fade"
+                animationType="slide"
                 onRequestClose={() => setPendingAttachment(null)}
             >
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Send to {name}?</Text>
+                    <View style={[styles.modalContent, { paddingHorizontal: 0, paddingTop: 0, overflow: 'hidden' }]}>
 
-                        {pendingAttachment?.fileType === 'image' && (
+                        {/* Image Preview */}
+                        {pendingAttachment?.fileType === 'image' && pendingAttachment.thumbnailUri && (
                             <Image
-                                source={{ uri: pendingAttachment.uri }}
-                                style={{ width: '100%', height: 200, borderRadius: 12, marginBottom: 12, backgroundColor: '#f1f5f9' }}
-                                resizeMode="contain"
+                                source={{ uri: pendingAttachment.thumbnailUri }}
+                                style={styles.previewImage}
+                                resizeMode="cover"
                             />
                         )}
 
-                        <Text style={styles.modalText} numberOfLines={1}>
-                            {pendingAttachment?.fileName}
-                        </Text>
-                        {pendingAttachment?.fileSize ? (
-                            <Text style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>
-                                {Math.round(pendingAttachment.fileSize / 1024)} KB
+                        {/* Video Preview with play button overlay */}
+                        {pendingAttachment?.fileType === 'video' && pendingAttachment.thumbnailUri && (
+                            <View style={styles.videoPreviewContainer}>
+                                <Image
+                                    source={{ uri: pendingAttachment.thumbnailUri }}
+                                    style={StyleSheet.absoluteFillObject}
+                                    resizeMode="cover"
+                                />
+                                <View style={styles.videoPlayOverlay}>
+                                    <View style={styles.playButton}>
+                                        <Play size={28} color="white" fill="white" />
+                                    </View>
+                                </View>
+                                <View style={styles.videoBadge}>
+                                    <Text style={styles.videoBadgeText}>VIDEO</Text>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Audio placeholder */}
+                        {pendingAttachment?.fileType === 'audio' && (
+                            <View style={[styles.videoPreviewContainer, { backgroundColor: '#1e1b4b' }]}>
+                                <Text style={{ fontSize: 48 }}>🎵</Text>
+                                <Text style={{ color: 'white', marginTop: 8, fontWeight: '600' }}>Audio File</Text>
+                            </View>
+                        )}
+
+                        <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20, width: '100%' }}>
+                            <Text style={styles.modalTitle}>Send to {name}</Text>
+
+                            <Text style={styles.modalText} numberOfLines={2}>
+                                {pendingAttachment?.fileName}
                             </Text>
-                        ) : null}
 
-                        <View style={styles.modalWarning}>
-                            <Text style={styles.modalWarningText}>
-                                ⚠️ Recipient must be ONLINE for direct transfer.
-                            </Text>
-                        </View>
-
-                        <Text style={[styles.modalText, { fontSize: 13, marginBottom: 24 }]}>
-                            {isRecipientOnline
-                                ? "✅ Recipient is online. Ready to send."
-                                : "☁️ Recipient is OFFLINE. File will be queued."}
-                        </Text>
-
-                        <View style={styles.modalButtons}>
-                            <TouchableOpacity
-                                style={[styles.modalBtn, styles.cancelBtn]}
-                                onPress={() => setPendingAttachment(null)}
-                            >
-                                <Text style={styles.cancelBtnText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.modalBtn, styles.confirmBtn]}
-                                onPress={confirmSend}
-                            >
-                                <Text style={styles.confirmBtnText}>
-                                    {isRecipientOnline ? "Send Now" : "Queue Send"}
+                            {pendingAttachment?.fileSize ? (
+                                <Text style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12, textAlign: 'center' }}>
+                                    {pendingAttachment.fileSize < 1024 * 1024
+                                        ? `${Math.round(pendingAttachment.fileSize / 1024)} KB`
+                                        : `${(pendingAttachment.fileSize / (1024 * 1024)).toFixed(1)} MB`}
                                 </Text>
-                            </TouchableOpacity>
+                            ) : null}
+
+                            <View style={[styles.statusBanner, { backgroundColor: isRecipientOnline ? '#f0fdf4' : '#fff7ed', borderColor: isRecipientOnline ? '#bbf7d0' : '#fed7aa' }]}>
+                                <Text style={[styles.statusBannerText, { color: isRecipientOnline ? '#15803d' : '#c2410c' }]}>
+                                    {isRecipientOnline
+                                        ? '✅ Online — will send directly via P2P'
+                                        : '☁️ Offline — will queue and send when online'}
+                                </Text>
+                            </View>
+
+                            <View style={[styles.modalButtons, { marginTop: 16 }]}>
+                                <TouchableOpacity
+                                    style={[styles.modalBtn, styles.cancelBtn]}
+                                    onPress={() => setPendingAttachment(null)}
+                                >
+                                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.modalBtn, styles.confirmBtn]}
+                                    onPress={confirmSend}
+                                >
+                                    <Text style={styles.confirmBtnText}>
+                                        {isRecipientOnline ? '📤 Send Now' : '☁️ Queue'}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     </View>
                 </View>
@@ -1147,5 +1217,64 @@ const styles = StyleSheet.create({
     },
     disabledButton: {
         backgroundColor: '#cbd5e1',
+    },
+    // --- Send Confirmation Modal Preview Styles ---
+    previewImage: {
+        width: '100%',
+        height: 220,
+        backgroundColor: '#f1f5f9',
+    },
+    videoPreviewContainer: {
+        width: '100%',
+        height: 220,
+        backgroundColor: '#0f172a',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    videoPlayOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.25)',
+    },
+    playButton: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: 'rgba(99, 102, 241, 0.9)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#6366f1',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    videoBadge: {
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 4,
+    },
+    videoBadgeText: {
+        color: 'white',
+        fontSize: 10,
+        fontWeight: '700',
+        letterSpacing: 1,
+    },
+    statusBanner: {
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 10,
+        borderWidth: 1,
+        width: '100%',
+    },
+    statusBannerText: {
+        fontSize: 13,
+        fontWeight: '500',
+        textAlign: 'center',
     },
 });

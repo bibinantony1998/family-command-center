@@ -172,14 +172,28 @@ export async function sendFileP2P(
         const ReactNativeBlobUtil = require('react-native-blob-util').default;
         const { Buffer } = require('buffer');
 
-        let uriToRead = fileUri;
+        let base64: string;
+
         if (Platform.OS === 'android' && fileUri.startsWith('content://')) {
-            // react-native-blob-util handles content:// URIs directly
+            // Content URIs need to be copied to a cache file first for reliable reading
+            const cacheDir = ReactNativeBlobUtil.fs.dirs.CacheDir;
+            const ext = fileName.includes('.') ? fileName.split('.').pop() : 'tmp';
+            const tmpPath = `${cacheDir}/upload_tmp_${Date.now()}.${ext}`;
+            try {
+                await ReactNativeBlobUtil.MediaCollection.copyToInternal(fileUri, tmpPath);
+                base64 = await ReactNativeBlobUtil.fs.readFile(tmpPath, 'base64');
+                // Clean up temp file
+                ReactNativeBlobUtil.fs.unlink(tmpPath).catch(() => { });
+            } catch (copyErr) {
+                log('⚠️ MediaCollection.copyToInternal failed, trying direct read:', copyErr);
+                // Fallback: try direct read
+                base64 = await ReactNativeBlobUtil.fs.readFile(fileUri, 'base64');
+            }
         } else {
-            uriToRead = fileUri.replace('file://', '');
+            const uriToRead = fileUri.startsWith('file://') ? fileUri.replace('file://', '') : fileUri;
+            base64 = await ReactNativeBlobUtil.fs.readFile(uriToRead, 'base64');
         }
 
-        const base64 = await ReactNativeBlobUtil.fs.readFile(uriToRead, 'base64');
         arrayBuffer = Buffer.from(base64, 'base64').buffer;
         log(`📂 File read success: ${arrayBuffer.byteLength} bytes`);
     } catch (err) {
@@ -272,7 +286,8 @@ export async function sendFileP2P(
         dataChannel.onopen = async () => {
             log('📡 DataChannel OPEN — sending file...');
             resetTimeout();
-            const metadata: FileMetadata = { fileName, fileType, fileSize, senderId, transferId };
+            // Include messageId so receiver can match the incoming file to the correct chat message
+            const metadata: FileMetadata = { fileName, fileType, fileSize, senderId, transferId, messageId };
             dataChannel.send(JSON.stringify({ type: 'metadata', data: metadata }));
 
             const totalChunks = Math.ceil(arrayBuffer.byteLength / CHUNK_SIZE);

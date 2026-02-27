@@ -2,7 +2,8 @@ import { useNavigate } from 'react-router-dom';
 import {
     Calculator, Play, Layers, Zap, Palette, Brain, Gamepad2, Type, Timer,
     Grid3X3, Binary, Hammer, LayoutGrid, FlaskConical, RotateCcw, MapPin,
-    Hash, BrainCircuit, Eye, Shuffle, GitFork
+    Hash, BrainCircuit, Eye, Shuffle, GitFork, Grid2x2,
+    Tangent, Link, Link2, Lock, Dice5, Lightbulb
 } from 'lucide-react';
 
 interface Game {
@@ -45,6 +46,9 @@ const CATEGORIES: Category[] = [
             { id: 'ball-sort', title: 'Ball Sort', description: 'Sort colored balls into matching tubes.', icon: FlaskConical, color: 'from-purple-500 to-pink-500', textColor: 'text-purple-600', bgColor: 'bg-purple-100', path: '/games/ball-sort' },
             { id: 'number-sequence', title: 'Number Sequence', description: 'Find the pattern — what comes next?', icon: Hash, color: 'from-emerald-500 to-green-500', textColor: 'text-emerald-600', bgColor: 'bg-emerald-100', path: '/games/number-sequence' },
             { id: 'pathway-maze', title: 'Pathway Maze', description: 'Navigate from start to the goal!', icon: MapPin, color: 'from-teal-500 to-cyan-500', textColor: 'text-teal-600', bgColor: 'bg-teal-100', path: '/games/pathway-maze' },
+            { id: 'sliding-puzzle', title: 'Sliding Puzzle', description: 'Slide tiles into order with the fewest moves.', icon: Grid2x2, color: 'from-indigo-500 to-violet-500', textColor: 'text-indigo-600', bgColor: 'bg-indigo-100', path: '/games/sliding-puzzle' },
+            { id: 'river-crossing', title: 'River Crossing', description: "Classic boat puzzles — don't leave dangerous pairs alone!", icon: GitFork, color: 'from-cyan-500 to-sky-600', textColor: 'text-cyan-700', bgColor: 'bg-cyan-100', path: '/games/river-crossing' },
+            { id: 'matchstick-math', title: 'Matchstick Math', description: 'Move one matchstick to fix the broken equation.', icon: Binary, color: 'from-amber-500 to-orange-500', textColor: 'text-amber-700', bgColor: 'bg-amber-100', path: '/games/matchstick-math' },
         ]
     },
     {
@@ -57,6 +61,7 @@ const CATEGORIES: Category[] = [
             { id: 'visual-search', title: 'Visual Search', description: 'Find all target shapes in the grid.', icon: Eye, color: 'from-sky-500 to-blue-500', textColor: 'text-sky-600', bgColor: 'bg-sky-100', path: '/games/visual-search' },
             { id: 'trail-making', title: 'Trail Making', description: 'Connect numbered dots in order, fast!', icon: GitFork, color: 'from-fuchsia-500 to-purple-500', textColor: 'text-fuchsia-600', bgColor: 'bg-fuchsia-100', path: '/games/trail-making' },
             { id: 'dual-task', title: 'Dual Task', description: 'Solve math and count shapes at once!', icon: BrainCircuit, color: 'from-rose-500 to-pink-500', textColor: 'text-rose-600', bgColor: 'bg-rose-100', path: '/games/dual-task' },
+            { id: 'typing-speed', title: 'Typing Speed', description: 'How fast can you type? Test your WPM!', icon: Layers, color: 'from-teal-500 to-emerald-600', textColor: 'text-teal-700', bgColor: 'bg-teal-100', path: '/games/typing-speed' },
         ]
     },
     {
@@ -65,6 +70,9 @@ const CATEGORIES: Category[] = [
         games: [
             { id: 'word-scramble', title: 'Word Scramble', description: 'Unscramble letters to find the word.', icon: Type, color: 'from-orange-500 to-red-500', textColor: 'text-orange-600', bgColor: 'bg-orange-100', path: '/games/word-scramble' },
             { id: 'anagram-solver', title: 'Anagram Solver', description: 'Tap letters in order to form the word.', icon: Shuffle, color: 'from-amber-500 to-yellow-400', textColor: 'text-amber-600', bgColor: 'bg-amber-100', path: '/games/anagram-solver' },
+            { id: 'hangman', title: 'Hangman', description: 'Guess the hidden word one letter at a time.', icon: Tangent, color: 'from-pink-600 to-rose-700', textColor: 'text-pink-700', bgColor: 'bg-pink-100', path: '/games/hangman' },
+            { id: 'word-connections', title: 'Word Connections', description: 'Group 16 words into 4 themed categories.', icon: Link2, color: 'from-sky-600 to-blue-700', textColor: 'text-sky-700', bgColor: 'bg-sky-100', path: '/games/word-connections' },
+            { id: 'word-chain', title: 'Word Chain', description: 'Chain words where each starts with the last letter.', icon: Link, color: 'from-violet-600 to-purple-700', textColor: 'text-violet-700', bgColor: 'bg-violet-100', path: '/games/word-chain' },
         ]
     },
     {
@@ -73,6 +81,16 @@ const CATEGORIES: Category[] = [
         games: [
             { id: 'color-chaos', title: 'Color Chaos', description: 'Tap the color of the text, not the word!', icon: Palette, color: 'from-pink-500 to-rose-500', textColor: 'text-pink-600', bgColor: 'bg-pink-100', path: '/games/color-chaos' },
             { id: 'mental-rotation', title: 'Mental Rotation', description: 'Which shape is a rotated match?', icon: RotateCcw, color: 'from-cyan-500 to-teal-500', textColor: 'text-cyan-600', bgColor: 'bg-cyan-100', path: '/games/mental-rotation' },
+        ]
+    },
+    {
+        label: 'Logic & Deduction',
+        emoji: '🔬',
+        games: [
+            { id: 'sudoku', title: 'Sudoku', description: 'Fill the grid so each number appears once per row, column & box.', icon: Grid2x2, color: 'from-blue-700 to-indigo-700', textColor: 'text-blue-700', bgColor: 'bg-blue-100', path: '/games/sudoku' },
+            { id: 'code-breaker', title: 'Code Breaker', description: 'Crack the hidden color code with deduction!', icon: Lock, color: 'from-violet-700 to-purple-800', textColor: 'text-violet-700', bgColor: 'bg-violet-100', path: '/games/code-breaker' },
+            { id: 'lights-out', title: 'Lights Out', description: 'Tap tiles to toggle neighbors and turn off all lights.', icon: Lightbulb, color: 'from-amber-700 to-orange-700', textColor: 'text-amber-700', bgColor: 'bg-amber-100', path: '/games/lights-out' },
+            { id: '2048', title: '2048', description: 'Merge tiles by swiping to reach 2048!', icon: Dice5, color: 'from-orange-600 to-red-600', textColor: 'text-orange-700', bgColor: 'bg-orange-100', path: '/games/2048' },
         ]
     },
 ];

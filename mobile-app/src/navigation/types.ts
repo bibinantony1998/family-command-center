@@ -28,6 +28,19 @@ export type RootStackParamList = {
     Game_VisualSearch: undefined;
     Game_AnagramSolver: undefined;
     Game_TrailMaking: undefined;
+    // New games
+    Game_Sudoku: undefined;
+    Game_TypingSpeed: undefined;
+    Game_Hangman: undefined;
+    Game_WordConnections: undefined;
+    Game_CodeBreaker: undefined;
+    Game_2048: undefined;
+    Game_LightsOut: undefined;
+    Game_WordChain: undefined;
+    // New problem solving games
+    Game_SlidingPuzzle: undefined;
+    Game_RiverCrossing: undefined;
+    Game_MatchstickMath: undefined;
     // Expenses
     AddExpense: { id?: string } | undefined;
     SettleUp: undefined;

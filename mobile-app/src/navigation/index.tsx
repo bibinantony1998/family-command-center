@@ -104,6 +104,19 @@ export default function RootNavigator() {
                         <Stack.Screen name="Game_VisualSearch" component={require('../screens/games/VisualSearch').default} />
                         <Stack.Screen name="Game_AnagramSolver" component={require('../screens/games/AnagramSolver').default} />
                         <Stack.Screen name="Game_TrailMaking" component={require('../screens/games/TrailMaking').default} />
+
+                        {/* Games Batch 6 — new games */}
+                        <Stack.Screen name="Game_Sudoku" component={require('../screens/games/Sudoku').default} />
+                        <Stack.Screen name="Game_TypingSpeed" component={require('../screens/games/TypingSpeed').default} />
+                        <Stack.Screen name="Game_Hangman" component={require('../screens/games/Hangman').default} />
+                        <Stack.Screen name="Game_WordConnections" component={require('../screens/games/WordConnections').default} />
+                        <Stack.Screen name="Game_CodeBreaker" component={require('../screens/games/CodeBreaker').default} />
+                        <Stack.Screen name="Game_2048" component={require('../screens/games/Game2048').default} />
+                        <Stack.Screen name="Game_LightsOut" component={require('../screens/games/LightsOut').default} />
+                        <Stack.Screen name="Game_WordChain" component={require('../screens/games/WordChain').default} />
+                        <Stack.Screen name="Game_SlidingPuzzle" component={require('../screens/games/SlidingPuzzle').default} />
+                        <Stack.Screen name="Game_RiverCrossing" component={require('../screens/games/RiverCrossing').default} />
+                        <Stack.Screen name="Game_MatchstickMath" component={require('../screens/games/MatchstickMath').default} />
                     </>
                 )}
 
