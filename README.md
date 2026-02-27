@@ -316,7 +316,9 @@ family-command-center/
 
 ## 📄 License
 
-MIT License — feel free to fork and build your own family tool.
+© 2026 Bibin Antony. All Rights Reserved.
+
+This repository is temporarily public for the [DEV Weekend Challenge](https://dev.to/challenges/weekend-2026-02-28). The source code is **not open source** and may not be copied, modified, or redistributed without explicit permission from the author.
 
 ---
 
