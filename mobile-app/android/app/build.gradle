@@ -83,8 +83,8 @@ android {
         applicationId "com.familycommandcenter"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 26
-        versionName "2.0"
+        versionCode 28
+        versionName "2.1"
     }
     buildFeatures {
         prefab true
@@ -118,7 +118,9 @@ android {
     }
     packagingOptions {
         jniLibs {
-            useLegacyPackaging = true
+            // 16KB page size: do NOT use useLegacyPackaging here.
+            // NDK r27+ compiles .so files with 16KB-aligned segments natively.
+            useLegacyPackaging = false
         }
         pickFirst '**/libhermes.so'
         pickFirst '**/libhermes_executor.so'
@@ -136,5 +138,32 @@ dependencies {
         implementation("com.facebook.react:hermes-android")
     } else {
         implementation jscFlavor
+    }
+}
+
+// Rename the release AAB to include versionName and versionCode
+android.applicationVariants.all { variant ->
+    if (variant.buildType.name == 'release') {
+        variant.outputs.all { output ->
+            def vName = variant.versionName
+            def vCode = variant.versionCode
+            outputFileName = "app-release-v${vName}-vc${vCode}.aab"
+        }
+    }
+}
+
+tasks.whenTaskAdded { task ->
+    if (task.name == 'bundleRelease') {
+        task.doLast {
+            def outDir = file("${buildDir}/outputs/bundle/release")
+            def vName = android.defaultConfig.versionName
+            def vCode = android.defaultConfig.versionCode
+            def srcFile = new File(outDir, 'app-release.aab')
+            def destFile = new File(outDir, "app-release-v${vName}-vc${vCode}.aab")
+            if (srcFile.exists()) {
+                srcFile.renameTo(destFile)
+                println "AAB renamed to: ${destFile.name}"
+            }
+        }
     }
 }

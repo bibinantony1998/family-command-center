@@ -112,7 +112,7 @@ export default function TrailMaking() {
                         <span>Level {level} • {getLevelCount(level)} dots</span>
                         <span className="font-mono text-indigo-600">{elapsed}s</span>
                     </div>
-                    <div className="text-center text-sm text-slate-400">Next: <span className="font-bold text-indigo-600">{nextDot + 1}</span></div>
+                    <div className="text-center text-sm text-slate-400"><span className="font-bold text-slate-500">{nextDot}</span> / {dots.length} done</div>
 
                     <div className="rounded-2xl border border-slate-200 overflow-hidden bg-slate-50">
                         <svg width={SVG_SIZE} height={SVG_SIZE} className="w-full h-auto" viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}>
@@ -123,17 +123,15 @@ export default function TrailMaking() {
                             {/* Dots */}
                             {dots.map((d, i) => {
                                 const done = i < nextDot;
-                                const isNext = i === nextDot;
                                 return (
-                                    <g key={i} onClick={() => handleDotClick(i)} style={{ cursor: isNext ? 'pointer' : 'default' }}>
+                                    <g key={i} onClick={() => handleDotClick(i)} style={{ cursor: !done ? 'pointer' : 'default' }}>
                                         <circle cx={d.x} cy={d.y} r={14}
-                                            fill={done ? '#a5b4fc' : isNext ? '#6366f1' : '#fff'}
-                                            stroke={done ? '#6366f1' : isNext ? '#4338ca' : '#cbd5e1'}
+                                            fill={done ? '#a5b4fc' : '#fff'}
+                                            stroke={done ? '#6366f1' : '#cbd5e1'}
                                             strokeWidth={2}
-                                            className={isNext ? 'animate-pulse' : ''}
                                         />
                                         <text x={d.x} y={d.y} textAnchor="middle" dominantBaseline="central" fontSize={10}
-                                            fill={done || isNext ? 'white' : '#64748b'} fontWeight="bold">
+                                            fill={done ? 'white' : '#64748b'} fontWeight="bold">
                                             {i + 1}
                                         </text>
                                     </g>

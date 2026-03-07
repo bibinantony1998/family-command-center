@@ -78,7 +78,7 @@ export default function TrailMakingScreen() {
 
             {gameState === 'playing' && dots.length > 0 && (
                 <View style={s.playArea}>
-                    <Text style={s.nextHint}>Next: <Text style={s.nextNum}>{nextDot + 1}</Text></Text>
+                    <Text style={s.nextHint}>{nextDot} <Text style={s.nextNum}>/ {dots.length}</Text> done</Text>
                     <View style={[s.svgWrap, { width: SVG_SIZE, height: SVG_SIZE }]}>
                         {/* Lines */}
                         {lines.map((l, i) => {
@@ -95,11 +95,11 @@ export default function TrailMakingScreen() {
                         })}
                         {/* Dots */}
                         {dots.map((d, i) => {
-                            const done = i < nextDot, isNext = i === nextDot;
+                            const done = i < nextDot;
                             return (
                                 <TouchableOpacity key={i} onPress={() => handleDot(i)}
-                                    style={[s.dot, { left: d.x - 18, top: d.y - 18 }, done && s.dotDone, isNext && s.dotNext]}>
-                                    <Text style={[s.dotText, (done || isNext) && s.dotTextLight]}>{i + 1}</Text>
+                                    style={[s.dot, { left: d.x - 18, top: d.y - 18 }, done && s.dotDone]}>
+                                    <Text style={[s.dotText, done && s.dotTextLight]}>{i + 1}</Text>
                                 </TouchableOpacity>
                             );
                         })}
@@ -131,12 +131,11 @@ const s = StyleSheet.create({
     subtitle: { fontSize: 14, color: '#64748b', textAlign: 'center', marginBottom: 24 },
     btn: { width: '100%', marginTop: 8 },
     playArea: { flex: 1, alignItems: 'center' },
-    nextHint: { fontSize: 14, color: '#94a3b8', marginBottom: 8 },
-    nextNum: { fontWeight: '800', color: '#6366f1', fontSize: 16 },
+    nextHint: { fontSize: 14, color: '#94a3b8', marginBottom: 8, fontWeight: '600' },
+    nextNum: { fontWeight: '800', color: '#475569', fontSize: 14 },
     svgWrap: { backgroundColor: '#f8fafc', borderRadius: 16, borderWidth: 2, borderColor: '#e2e8f0', position: 'relative', overflow: 'hidden' },
     dot: { position: 'absolute', width: 36, height: 36, borderRadius: 18, backgroundColor: 'white', borderWidth: 2, borderColor: '#cbd5e1', justifyContent: 'center', alignItems: 'center' },
     dotDone: { backgroundColor: '#a5b4fc', borderColor: '#6366f1' },
-    dotNext: { backgroundColor: '#6366f1', borderColor: '#4338ca', shadowColor: '#6366f1', shadowOpacity: 0.4, shadowRadius: 8, elevation: 4, shadowOffset: { width: 0, height: 2 } },
     dotText: { fontSize: 11, fontWeight: '800', color: '#64748b' },
     dotTextLight: { color: 'white' },
     resultTitle: { fontSize: 28, fontWeight: '800', color: '#1e293b', marginTop: 16 },

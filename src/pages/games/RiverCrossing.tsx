@@ -155,8 +155,9 @@ export default function RiverCrossing() {
                         <h1 className="text-3xl font-bold text-slate-800">River Crossing</h1>
                         <p className="text-slate-500">Transport everyone safely across the river — without leaving dangerous pairs alone!</p>
                         <div className="bg-slate-50 p-4 rounded-xl text-left text-sm space-y-2">
-                            <p>• Click items on a bank to load them onto the boat (max 2)</p>
-                            <p>• Click <strong>Row →</strong> to cross (you can row empty too)</p>
+                            <p>• Click items on a bank to load them onto the boat — capacity varies per puzzle (1 or 2)</p>
+                            <p>• The farmer always rides the boat — you can cross with an empty boat too</p>
+                            <p>• Click <strong>Row →</strong> to cross</p>
                             <p>• Certain combinations left unsupervised cause trouble!</p>
                         </div>
                         <Button onClick={() => startLevel(level)} disabled={isLoading} className="w-full h-12 text-lg">

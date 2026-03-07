@@ -41,6 +41,8 @@ export default function DualTask() {
 
     const [timeLeft, setTimeLeft] = useState(ROUND_TIME);
     const [totalTasks, setTotalTasks] = useState(0);
+    const [mathFeedback, setMathFeedback] = useState<'correct' | 'wrong' | null>(null);
+    const [shapeFeedback, setShapeFeedback] = useState<'correct' | 'wrong' | null>(null);
     const [highestUnlockedLevel, setHighestUnlockedLevel] = useState(1);
     const [isLoading, setIsLoading] = useState(true);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -60,12 +62,11 @@ export default function DualTask() {
         const gridSize = 9 + lvl;
         const target = SHAPES[Math.floor(Math.random() * SHAPES.length)];
         const count = 2 + Math.floor(Math.random() * (lvl + 2));
-        const grid: string[] = Array.from({ length: gridSize }, () => SHAPES[Math.floor(Math.random() * SHAPES.length)]);
-        let placed = 0;
-        while (placed < count) {
-            const idx = Math.floor(Math.random() * gridSize);
-            if (grid[idx] !== target) { grid[idx] = target; placed++; }
-        }
+        // Fill with non-target shapes only, then place exactly `count` targets
+        const nonTargets = SHAPES.filter(s => s !== target);
+        const grid: string[] = Array.from({ length: gridSize }, () => nonTargets[Math.floor(Math.random() * nonTargets.length)]);
+        const positions = Array.from({ length: gridSize }, (_, i) => i).sort(() => Math.random() - 0.5);
+        for (let p = 0; p < count; p++) grid[positions[p]] = target;
         setTargetShape(target); setShapeGrid(grid); setShapeCount(count); setShapeInput('');
     };
 
@@ -98,16 +99,22 @@ export default function DualTask() {
         const newInput = mathInput + val;
         setMathInput(newInput);
         if (parseInt(newInput) === math.answer) {
-            setMathCorrect(p => p + 1); setTotalTasks(p => p + 1); refreshMath(level);
+            setMathFeedback('correct');
+            setMathCorrect(p => p + 1); setTotalTasks(p => p + 1);
+            setTimeout(() => { setMathFeedback(null); refreshMath(level); }, 650);
         } else if (newInput.length > String(math.answer).length) {
-            setTimeout(() => setMathInput(''), 200);
+            setMathFeedback('wrong');
+            setTimeout(() => { setMathFeedback(null); setMathInput(''); }, 600);
         }
     };
 
     const handleShapeSubmit = () => {
         const guess = parseInt(shapeInput);
-        if (guess === shapeCount) setShapeCorrect(p => p + 1);
-        setTotalTasks(p => p + 1); generateShapeGrid(level);
+        const isCorrect = guess === shapeCount;
+        setShapeFeedback(isCorrect ? 'correct' : 'wrong');
+        if (isCorrect) setShapeCorrect(p => p + 1);
+        setTotalTasks(p => p + 1);
+        setTimeout(() => { setShapeFeedback(null); generateShapeGrid(level); }, 700);
     };
 
     const saveAndNext = async () => {
@@ -151,8 +158,15 @@ export default function DualTask() {
                     </div>
 
                     {/* Math Task */}
-                    <Card className="p-3">
-                        <p className="text-xs font-bold text-blue-500 uppercase mb-1">Math Task</p>
+                    <Card className={`p-3 border-2 transition-colors ${mathFeedback === 'correct' ? 'border-green-400 bg-green-50' : mathFeedback === 'wrong' ? 'border-red-400 bg-red-50' : 'border-transparent'}`}>
+                        <div className="flex items-center justify-between mb-1">
+                            <p className="text-xs font-bold text-blue-500 uppercase">Math Task</p>
+                            {mathFeedback && (
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${mathFeedback === 'correct' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                    {mathFeedback === 'correct' ? '✓ Correct!' : '✗ Wrong'}
+                                </span>
+                            )}
+                        </div>
                         <div className="flex items-center gap-3">
                             <span className="text-2xl font-black text-slate-700">{math.q} =</span>
                             <div className="flex-1 h-10 border-b-2 border-blue-300 text-xl font-bold text-blue-600 flex items-center">{mathInput || <span className="text-slate-300">?</span>}</div>
@@ -165,11 +179,18 @@ export default function DualTask() {
                     </Card>
 
                     {/* Shape Task */}
-                    <Card className="p-3">
-                        <p className="text-xs font-bold text-rose-500 uppercase mb-1">Count: <span className="text-2xl">{targetShape}</span></p>
+                    <Card className={`p-3 border-2 transition-colors ${shapeFeedback === 'correct' ? 'border-green-400 bg-green-50' : shapeFeedback === 'wrong' ? 'border-red-400 bg-red-50' : 'border-transparent'}`}>
+                        <div className="flex items-center justify-between mb-1">
+                            <p className="text-xs font-bold text-rose-500 uppercase">Count: <span className="text-2xl">{targetShape}</span></p>
+                            {shapeFeedback && (
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${shapeFeedback === 'correct' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                    {shapeFeedback === 'correct' ? `✓ ${shapeCount} is right!` : `✗ Was ${shapeCount}`}
+                                </span>
+                            )}
+                        </div>
                         <div className="grid grid-cols-5 gap-1 mb-2">
                             {shapeGrid.map((s, i) => (
-                                <div key={i} className={`h-9 rounded-lg flex items-center justify-center text-lg ${s === targetShape ? 'bg-rose-50' : 'bg-slate-50'} text-slate-600`}>{s}</div>
+                                <div key={i} className="h-9 rounded-lg flex items-center justify-center text-lg bg-slate-50 text-slate-600">{s}</div>
                             ))}
                         </div>
                         <div className="flex gap-2">

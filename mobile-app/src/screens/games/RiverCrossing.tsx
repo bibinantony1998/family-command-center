@@ -152,10 +152,11 @@ export default function RiverCrossing() {
                     <Text style={s.title}>River Crossing</Text>
                     <Text style={s.sub}>Transport everyone safely — but follow the rules!</Text>
                     <View style={s.rules}>
-                        <Text style={s.rule}>• Tap items to load them onto the boat (max 2)</Text>
-                        <Text style={s.rule}>• Press Row → to cross</Text>
-                        <Text style={s.rule}>• You can row empty to drop one by themself</Text>
-                        <Text style={s.rule}>• Certain combinations left alone are dangerous</Text>
+                        <Text style={s.rule}>• Tap items on the bank to load onto the boat</Text>
+                        <Text style={s.rule}>• Each puzzle shows the boat capacity (1 or 2 items max)</Text>
+                        <Text style={s.rule}>• Press Row → to cross — the farmer always travels with the boat</Text>
+                        <Text style={s.rule}>• You can cross with an empty boat to drop someone off alone</Text>
+                        <Text style={s.rule}>• Certain combinations left alone on a bank are dangerous!</Text>
                     </View>
                     <Button title={loading ? 'Loading…' : `Start Level ${level}`} onPress={() => startLevel(level)} disabled={loading} style={s.btn} />
                 </View>
@@ -191,6 +192,7 @@ export default function RiverCrossing() {
                                     const it = puzzle.items.find(x => x.id === id);
                                     return it ? <Text key={id} style={s.boatItem}>{it.emoji}</Text> : null;
                                 })}
+                                <Text style={s.boatCapacity}>{boatLoad.length}/{puzzle.boatCapacity}</Text>
                             </View>
                             <TouchableOpacity style={s.rowBtn} onPress={row}>
                                 <Text style={s.rowBtnText}>{boatSide === 'left' ? 'Row →' : '← Row'}</Text>
@@ -268,7 +270,8 @@ const s = StyleSheet.create({
     itemLabel: { fontSize: 10, fontWeight: '700', color: '#475569', marginTop: 2 },
     river: { width: 80, alignItems: 'center', gap: 8, justifyContent: 'center' },
     riverLabel: { fontSize: 28 },
-    boat: { backgroundColor: '#bfdbfe', borderRadius: 10, padding: 8, alignItems: 'center', width: 70 },
+    boat: { backgroundColor: '#bfdbfe', borderRadius: 10, padding: 8, alignItems: 'center', width: 70, minHeight: 60 },
+    boatCapacity: { fontSize: 9, fontWeight: '700', color: '#3b82f6', marginTop: 2 },
     boatText: { fontSize: 24 },
     boatItem: { fontSize: 18 },
     rowBtn: { backgroundColor: '#4f46e5', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginTop: 8 },

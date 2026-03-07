@@ -17,27 +17,25 @@ function getLevelConfig(level: number) {
     return { gridSize, numDistractors, targetCount };
 }
 
-interface GridItem { shape: string; color: string; isTarget: boolean; }
+interface GridItem { shape: string; color: string; }
 
 function generateGrid(level: number): { items: GridItem[], target: string, targetColor: string, targetCount: number } {
     const { gridSize, numDistractors, targetCount } = getLevelConfig(level);
     const targetShape = ALL_SHAPES[Math.floor(Math.random() * ALL_SHAPES.length)];
     const targetColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-
     const distractorShapes = ALL_SHAPES.filter(s => s !== targetShape).slice(0, numDistractors);
     const distractorColors = COLORS.filter(c => c !== targetColor).slice(0, numDistractors);
-
+    // Place targets at unique shuffled positions
+    const positions = Array.from({ length: gridSize }, (_, i) => i).sort(() => Math.random() - 0.5);
+    const targetIndices = new Set(positions.slice(0, targetCount));
     const items: GridItem[] = [];
-    const targetIndices = new Set<number>();
-    while (targetIndices.size < targetCount) targetIndices.add(Math.floor(Math.random() * gridSize));
-
     for (let i = 0; i < gridSize; i++) {
         if (targetIndices.has(i)) {
-            items.push({ shape: targetShape, color: targetColor, isTarget: true });
+            items.push({ shape: targetShape, color: targetColor });
         } else {
             const s = distractorShapes[Math.floor(Math.random() * distractorShapes.length)];
             const c = distractorColors[Math.floor(Math.random() * distractorColors.length)];
-            items.push({ shape: s, color: c, isTarget: false });
+            items.push({ shape: s, color: c });
         }
     }
     return { items, target: targetShape, targetColor, targetCount };
@@ -53,6 +51,7 @@ export default function VisualSearch() {
     const [level, setLevel] = useState(1);
     const [puzzle, setPuzzle] = useState<ReturnType<typeof generateGrid> | null>(null);
     const [found, setFound] = useState<Set<number>>(new Set());
+    const [wrongTaps, setWrongTaps] = useState<Set<number>>(new Set());
     const [qNum, setQNum] = useState(0);
     const [correct, setCorrect] = useState(0);
     const [highestUnlockedLevel, setHighestUnlockedLevel] = useState(1);
@@ -75,18 +74,19 @@ export default function VisualSearch() {
             else setGameState('game-over');
             return;
         }
-        setPuzzle(generateGrid(lvl)); setFound(new Set()); setQNum(num);
+        setPuzzle(generateGrid(lvl)); setFound(new Set()); setWrongTaps(new Set()); setQNum(num);
     };
 
     const startLevel = (lvl: number) => {
         setLevel(lvl); setCorrect(0); setQNum(0);
-        setPuzzle(generateGrid(lvl)); setFound(new Set()); setGameState('playing');
+        setPuzzle(generateGrid(lvl)); setFound(new Set()); setWrongTaps(new Set()); setGameState('playing');
     };
 
     const handleTap = (idx: number) => {
-        if (!puzzle || found.has(idx)) return;
+        if (!puzzle || found.has(idx) || wrongTaps.has(idx)) return;
         const item = puzzle.items[idx];
-        if (item.isTarget) {
+        const isMatch = item.shape === puzzle.target && item.color === puzzle.targetColor;
+        if (isMatch) {
             const newFound = new Set(found);
             newFound.add(idx);
             setFound(newFound);
@@ -96,6 +96,10 @@ export default function VisualSearch() {
                 confetti({ particleCount: 30, spread: 40, origin: { y: 0.6 } });
                 setTimeout(() => nextQuestion(level, qNum + 1, newCorrect), 500);
             }
+        } else {
+            // Flash red for 600ms on wrong tap
+            const nw = new Set(wrongTaps); nw.add(idx); setWrongTaps(nw);
+            setTimeout(() => setWrongTaps(prev => { const s = new Set(prev); s.delete(idx); return s; }), 600);
         }
     };
 
@@ -143,7 +147,7 @@ export default function VisualSearch() {
                         {puzzle.items.map((item, idx) => (
                             <button key={idx} onClick={() => handleTap(idx)}
                                 className={`h-10 rounded-lg flex items-center justify-center text-xl transition-all
-                                    ${found.has(idx) ? 'bg-green-100 scale-90 ring-2 ring-green-400' : 'bg-slate-100 active:scale-90'}`}>
+                                    ${found.has(idx) ? 'bg-green-100 scale-90 ring-2 ring-green-400' : wrongTaps.has(idx) ? 'bg-red-100 ring-2 ring-red-400' : 'bg-slate-100 active:scale-90'}`}>
                                 <span className={item.color}>{item.shape}</span>
                             </button>
                         ))}

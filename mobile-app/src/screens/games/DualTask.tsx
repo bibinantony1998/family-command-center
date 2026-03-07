@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Animated } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Button } from '../../components/ui/Button';
 import { useGameScore } from '../../hooks/useGameScore';
@@ -17,13 +17,19 @@ function getMath(level: number) {
 }
 
 function makeShapeGrid(level: number) {
-    const gridSize = 12 + level, target = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+    const gridSize = 12 + level;
+    const target = SHAPES[Math.floor(Math.random() * SHAPES.length)];
     const count = 2 + Math.floor(Math.random() * (level + 1));
-    const grid = Array.from({ length: gridSize }, () => SHAPES[Math.floor(Math.random() * SHAPES.length)]);
-    let placed = 0;
-    while (placed < count) { const i = Math.floor(Math.random() * gridSize); if (grid[i] !== target) { grid[i] = target; placed++; } }
+    // Fill entirely with NON-target shapes first so random fill doesn't add surprise targets
+    const nonTargets = SHAPES.filter(s => s !== target);
+    const grid = Array.from({ length: gridSize }, () => nonTargets[Math.floor(Math.random() * nonTargets.length)]);
+    // Now place exactly `count` targets at random unique positions
+    const positions = Array.from({ length: gridSize }, (_, i) => i).sort(() => Math.random() - 0.5);
+    for (let p = 0; p < count; p++) grid[positions[p]] = target;
     return { grid, target, count };
 }
+
+type Feedback = 'correct' | 'wrong' | null;
 
 export default function DualTaskScreen() {
     const navigation = useNavigation();
@@ -39,16 +45,25 @@ export default function DualTaskScreen() {
     const [total, setTotal] = useState(0);
     const [timeLeft, setTimeLeft] = useState(ROUND_TIME);
     const [loading, setLoading] = useState(true);
+    const [mathFeedback, setMathFeedback] = useState<Feedback>(null);
+    const [shapeFeedback, setShapeFeedback] = useState<Feedback>(null);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const stateRef = useRef(gameState);
     stateRef.current = gameState;
+    // Use ref to hold latest mathOk/shapeOk/total so the feedback closures don't capture stale values
+    const mathOkRef = useRef(mathOk);
+    const shapeOkRef = useRef(shapeOk);
+    const totalRef = useRef(total);
+    mathOkRef.current = mathOk;
+    shapeOkRef.current = shapeOk;
+    totalRef.current = total;
 
     useEffect(() => { getHighestLevel('dual-task').then(l => { setLevel(l); setLoading(false); }); }, []);
     useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
     useEffect(() => {
         if (timeLeft === 0 && stateRef.current === 'playing') {
-            const passed = (mathOk + shapeOk) >= Math.floor(total * 0.6);
+            const passed = (mathOkRef.current + shapeOkRef.current) >= Math.floor(totalRef.current * 0.6);
             if (passed) { saveScore('dual-task', level, level * 2); setGameState('level-up'); }
             else setGameState('game-over');
         }
@@ -56,22 +71,45 @@ export default function DualTaskScreen() {
 
     const startLevel = (lvl: number) => {
         setLevel(lvl); setTimeLeft(ROUND_TIME); setMathOk(0); setShapeOk(0); setTotal(0);
-        setMath(getMath(lvl)); setMathInput(''); setShapes(makeShapeGrid(lvl)); setShapeInput(''); setGameState('playing');
+        setMath(getMath(lvl)); setMathInput(''); setShapes(makeShapeGrid(lvl)); setShapeInput('');
+        setMathFeedback(null); setShapeFeedback(null);
+        setGameState('playing');
         if (timerRef.current) clearInterval(timerRef.current);
         timerRef.current = setInterval(() => setTimeLeft(t => { if (t <= 1) { clearInterval(timerRef.current!); return 0; } return t - 1; }), 1000);
+    };
+
+    const showMathFeedback = (fb: Feedback) => {
+        setMathFeedback(fb);
+        setTimeout(() => setMathFeedback(null), 600);
     };
 
     const handleMathKey = (v: string) => {
         const ni = mathInput + v;
         setMathInput(ni);
-        if (parseInt(ni) === math.answer) { setMathOk(p => p + 1); setTotal(p => p + 1); setMath(getMath(level)); setMathInput(''); }
-        else if (ni.length > String(math.answer).length) setTimeout(() => setMathInput(''), 200);
+        if (parseInt(ni) === math.answer) {
+            setMathOk(p => p + 1); setTotal(p => p + 1);
+            showMathFeedback('correct');
+            setTimeout(() => { setMath(getMath(level)); setMathInput(''); }, 600);
+        } else if (ni.length > String(math.answer).length) {
+            showMathFeedback('wrong');
+            setTimeout(() => setMathInput(''), 600);
+        }
     };
 
     const handleShapeSubmit = () => {
-        if (parseInt(shapeInput) === shapes?.count) setShapeOk(p => p + 1);
-        setTotal(p => p + 1); setShapes(makeShapeGrid(level)); setShapeInput('');
+        const isCorrect = parseInt(shapeInput) === shapes?.count;
+        setShapeFeedback(isCorrect ? 'correct' : 'wrong');
+        if (isCorrect) setShapeOk(p => p + 1);
+        setTotal(p => p + 1);
+        setTimeout(() => {
+            setShapes(makeShapeGrid(level));
+            setShapeInput('');
+            setShapeFeedback(null);
+        }, 700);
     };
+
+    const mathBorderColor = mathFeedback === 'correct' ? '#22c55e' : mathFeedback === 'wrong' ? '#ef4444' : '#f8fafc';
+    const shapeBorderColor = shapeFeedback === 'correct' ? '#22c55e' : shapeFeedback === 'wrong' ? '#ef4444' : '#f8fafc';
 
     return (
         <View style={s.container}>
@@ -87,9 +125,10 @@ export default function DualTaskScreen() {
                     <Text style={s.title}>Dual Task</Text>
                     <Text style={s.subtitle}>Solve math AND count shapes at the same time!</Text>
                     <View style={s.rules}>
-                        <Text style={s.ruleText}>• Top half: tap number keys to answer math</Text>
-                        <Text style={s.ruleText}>• Bottom half: count the target shape, enter the count, tap ✓</Text>
-                        <Text style={s.ruleText}>• Need 60% accuracy to pass</Text>
+                        <Text style={s.ruleText}>• <Text style={s.ruleHighlight}>MATH:</Text> tap the numpad to answer the equation. You'll see ✅ or ❌ after each answer.</Text>
+                        <Text style={s.ruleText}>• <Text style={s.ruleHighlight}>COUNT:</Text> count the highlighted shape in the grid, enter the number, tap ✓. Green = correct, red = wrong.</Text>
+                        <Text style={s.ruleText}>• Need 60% accuracy across both tasks to pass</Text>
+                        <Text style={s.ruleText}>• Higher levels = bigger numbers + more shapes</Text>
                     </View>
                     <Button title={loading ? 'Loading...' : `Start Level ${level}`} onPress={() => startLevel(level)} disabled={loading} style={s.btn} />
                 </View>
@@ -98,11 +137,20 @@ export default function DualTaskScreen() {
             {gameState === 'playing' && shapes && (
                 <View style={s.playArea}>
                     {/* Math section */}
-                    <View style={s.section}>
-                        <Text style={s.sectionLabel}>MATH</Text>
+                    <View style={[s.section, { borderColor: mathBorderColor, borderWidth: 2 }]}>
+                        <View style={s.sectionHeader}>
+                            <Text style={s.sectionLabel}>MATH</Text>
+                            {mathFeedback && (
+                                <Text style={[s.feedbackBadge, mathFeedback === 'correct' ? s.fbCorrect : s.fbWrong]}>
+                                    {mathFeedback === 'correct' ? '✓ Correct!' : '✗ Wrong'}
+                                </Text>
+                            )}
+                        </View>
                         <View style={s.mathRow}>
                             <Text style={s.mathQ}>{math.q} =</Text>
-                            <View style={s.mathInputBox}><Text style={s.mathInputText}>{mathInput || '?'}</Text></View>
+                            <View style={[s.mathInputBox, mathFeedback && { borderColor: mathFeedback === 'correct' ? '#22c55e' : '#ef4444' }]}>
+                                <Text style={[s.mathInputText, mathFeedback === 'correct' && { color: '#22c55e' }, mathFeedback === 'wrong' && { color: '#ef4444' }]}>{mathInput || '?'}</Text>
+                            </View>
                         </View>
                         <View style={s.numpad}>
                             {[1, 2, 3, 4, 5, 6, 7, 8, 9, null, 0, null].map((n, i) => n !== null ? (
@@ -111,8 +159,15 @@ export default function DualTaskScreen() {
                         </View>
                     </View>
                     {/* Shape section */}
-                    <View style={s.section}>
-                        <Text style={s.sectionLabel}>COUNT: <Text style={s.targetShape}>{shapes.target}</Text></Text>
+                    <View style={[s.section, { borderColor: shapeBorderColor, borderWidth: 2 }]}>
+                        <View style={s.sectionHeader}>
+                            <Text style={s.sectionLabel}>COUNT: <Text style={s.targetShape}>{shapes.target}</Text></Text>
+                            {shapeFeedback && (
+                                <Text style={[s.feedbackBadge, shapeFeedback === 'correct' ? s.fbCorrect : s.fbWrong]}>
+                                    {shapeFeedback === 'correct' ? `✓ ${shapes.count} is right!` : `✗ Was ${shapes.count}`}
+                                </Text>
+                            )}
+                        </View>
                         <View style={s.shapesGrid}>
                             {shapes.grid.map((sh, i) => (
                                 <Text key={i} style={[s.shapeCell, sh === shapes.target && s.shapeCellTarget]}>{sh}</Text>
@@ -121,7 +176,9 @@ export default function DualTaskScreen() {
                         <View style={s.shapeInputRow}>
                             <TextInput value={shapeInput} onChangeText={setShapeInput} keyboardType="number-pad"
                                 style={s.shapeInput} placeholder="Count?" maxLength={2} />
-                            <TouchableOpacity onPress={handleShapeSubmit} style={s.submitBtn}><Text style={s.submitText}>✓</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={handleShapeSubmit} style={[s.submitBtn, shapeFeedback === 'correct' && { backgroundColor: '#22c55e' }, shapeFeedback === 'wrong' && { backgroundColor: '#ef4444' }]}>
+                                <Text style={s.submitText}>✓</Text>
+                            </TouchableOpacity>
                         </View>
                     </View>
                 </View>
@@ -159,12 +216,17 @@ const s = StyleSheet.create({
     big: { fontSize: 64 },
     title: { fontSize: 28, fontWeight: '800', color: '#1e293b', marginTop: 12, marginBottom: 8 },
     subtitle: { fontSize: 14, color: '#64748b', textAlign: 'center', marginBottom: 16 },
-    rules: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 14, width: '100%', marginBottom: 20 },
-    ruleText: { fontSize: 13, color: '#475569', marginBottom: 5 },
+    rules: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 14, width: '100%', marginBottom: 20, gap: 8 },
+    ruleText: { fontSize: 13, color: '#475569', lineHeight: 18 },
+    ruleHighlight: { fontWeight: '800', color: '#6366f1' },
     btn: { width: '100%', marginTop: 8 },
-    playArea: { flex: 1, gap: 12 },
+    playArea: { flex: 1, gap: 10 },
     section: { backgroundColor: '#f8fafc', borderRadius: 16, padding: 12 },
-    sectionLabel: { fontSize: 11, fontWeight: '800', color: '#3b82f6', letterSpacing: 1, marginBottom: 6 },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+    sectionLabel: { fontSize: 11, fontWeight: '800', color: '#3b82f6', letterSpacing: 1 },
+    feedbackBadge: { fontSize: 12, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+    fbCorrect: { backgroundColor: '#dcfce7', color: '#166534' },
+    fbWrong: { backgroundColor: '#fee2e2', color: '#991b1b' },
     mathRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
     mathQ: { fontSize: 22, fontWeight: '800', color: '#1e293b' },
     mathInputBox: { flex: 1, height: 36, borderBottomWidth: 2, borderColor: '#6366f1', justifyContent: 'center' },
@@ -174,11 +236,11 @@ const s = StyleSheet.create({
     nkeyText: { fontSize: 18, fontWeight: '700', color: '#4338ca' },
     targetShape: { fontSize: 20 },
     shapesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 8 },
-    shapeCell: { width: 30, height: 30, textAlign: 'center', textAlignVertical: 'center', fontSize: 18, backgroundColor: '#f1f5f9', borderRadius: 6 },
-    shapeCellTarget: { backgroundColor: '#ffe4e6' },
+    shapeCell: { width: 32, height: 32, textAlign: 'center', textAlignVertical: 'center', fontSize: 20, backgroundColor: '#f1f5f9', borderRadius: 6, color: '#334155' },
+    shapeCellTarget: {},
     shapeInputRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
     shapeInput: { flex: 1, height: 40, borderWidth: 2, borderColor: '#e2e8f0', borderRadius: 10, paddingHorizontal: 12, fontSize: 16, fontWeight: '700', color: '#1e293b' },
-    submitBtn: { width: 48, height: 40, borderRadius: 10, backgroundColor: '#ef4444', justifyContent: 'center', alignItems: 'center' },
+    submitBtn: { width: 48, height: 40, borderRadius: 10, backgroundColor: '#6366f1', justifyContent: 'center', alignItems: 'center' },
     submitText: { color: 'white', fontSize: 20, fontWeight: '800' },
     resultTitle: { fontSize: 28, fontWeight: '800', color: '#1e293b', marginTop: 16 },
     points: { fontSize: 36, fontWeight: '800', color: '#6366f1', marginTop: 8, marginBottom: 32 },
