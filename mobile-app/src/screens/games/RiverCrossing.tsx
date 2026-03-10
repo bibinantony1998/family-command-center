@@ -7,20 +7,110 @@ import { useGameScore } from '../../hooks/useGameScore';
 import { X, RefreshCw, Trophy } from 'lucide-react-native';
 
 // Each puzzle: items to cross the river; rule = fn(left[], right[]) -> isIllegal
+interface Item { id: string; emoji: string; label: string; canRow?: boolean; }
 interface Puzzle {
     title: string;
-    items: { id: string; emoji: string; label: string }[];
+    items: Item[];
     isIllegal: (side: string[]) => boolean;
     hint: string;
     minMoves: number;
     boatCapacity: number;
 }
 
+const isSolvable = (puzzle: Puzzle): number => {
+    const M = puzzle.items.length;
+    const allMask = (1 << M) - 1;
+
+    const queue: [number, boolean, number][] = [[allMask, true, 0]];
+    const visited = new Set<string>();
+    visited.add(`${allMask}-true`);
+
+    while (queue.length > 0) {
+        const item = queue.shift();
+        if (!item) break;
+        const [leftMask, isBoatLeft, moves] = item;
+        if (leftMask === 0 && !isBoatLeft) return moves;
+
+        if (moves > 100) return -1; // safeguard
+
+        const currentBankMask = isBoatLeft ? leftMask : (allMask ^ leftMask);
+
+        const combos: number[] = [];
+        let sub = currentBankMask;
+        while (sub > 0) {
+            let count = 0;
+            let hasRower = false;
+            for (let i = 0; i < M; i++) {
+                if ((sub & (1 << i)) !== 0) {
+                    count++;
+                    if (puzzle.items[i].canRow) hasRower = true;
+                }
+            }
+            if (count >= 1 && count <= puzzle.boatCapacity && hasRower) {
+                combos.push(sub);
+            }
+            sub = (sub - 1) & currentBankMask;
+        }
+
+        for (const boatMask of combos) {
+            const nextLeftMask = isBoatLeft ? (leftMask ^ boatMask) : (leftMask | boatMask);
+            const nextRightMask = allMask ^ nextLeftMask;
+
+            const getIds = (mask: number) => puzzle.items.filter((_, i) => (mask & (1 << i)) !== 0).map(x => x.id);
+
+            if (puzzle.isIllegal(getIds(nextLeftMask))) continue;
+            if (puzzle.isIllegal(getIds(nextRightMask))) continue;
+
+            const stateKey = `${nextLeftMask}-${!isBoatLeft}`;
+            if (!visited.has(stateKey)) {
+                visited.add(stateKey);
+                queue.push([nextLeftMask, !isBoatLeft, moves + 1]);
+            }
+        }
+    }
+    return -1;
+};
+
 const getPuzzleForLevel = (level: number): Puzzle => {
+    let easing = 0;
+    while (true) {
+        const p = generateBasePuzzle(level, easing);
+        if (level === 1) return p; // Bypass check for tutorial
+        const moves = isSolvable(p);
+        if (moves !== -1) {
+            p.minMoves = moves;
+            return p;
+        }
+        easing++;
+        if (easing > 5) return p; // Fallback
+    }
+};
+
+const generateBasePuzzle = (level: number, easing: number): Puzzle => {
     const cycle = (level - 1) % 3; // 0 = Food Chain, 1 = Outnumber, 2 = Protect
     const difficultyGroup = Math.floor((level - 1) / 3);
 
     if (cycle === 0) {
+        if (level === 1) {
+            return {
+                title: 'Farmer, Fox, Chicken & Grain',
+                items: [
+                    { id: 'farmer', emoji: '🧑‍🌾', label: 'Farmer', canRow: true },
+                    { id: 'fox', emoji: '🦊', label: 'Fox', canRow: false },
+                    { id: 'chicken', emoji: '🐔', label: 'Chicken', canRow: false },
+                    { id: 'grain', emoji: '🌾', label: 'Grain', canRow: false },
+                ],
+                isIllegal: (side) =>
+                    !side.includes('farmer') && (
+                        (side.includes('fox') && side.includes('chicken')) ||
+                        (side.includes('chicken') && side.includes('grain'))
+                    ),
+                hint: 'Fox eats chicken; chicken eats grain. Only the Farmer can row the boat!',
+                minMoves: 7,
+                boatCapacity: 2,
+            };
+        }
+
         // Food Chain
         const N = Math.min(7, 3 + difficultyGroup);
         const CHAINS = [
@@ -33,8 +123,8 @@ const getPuzzleForLevel = (level: number): Puzzle => {
         ];
         const chain = CHAINS[N];
 
-        const items = chain.map((it, i) => ({ id: `i${i}`, emoji: it.e, label: it.n }));
-        const cap = Math.floor(N / 2);
+        const items = chain.map((it, i) => ({ id: `i${i}`, emoji: it.e, label: it.n, canRow: i < Math.max(1, N - 2) }));
+        const cap = Math.floor(N / 2) + easing;
 
         return {
             title: `Food Chain (${N} items)`,
@@ -65,8 +155,8 @@ const getPuzzleForLevel = (level: number): Puzzle => {
 
         const items = [];
         for (let i = 1; i <= N; i++) {
-            items.push({ id: `a${i}`, emoji: theme.a.e, label: `${theme.a.n} ${i}` });
-            items.push({ id: `b${i}`, emoji: theme.b.e, label: `${theme.b.n} ${i}` });
+            items.push({ id: `a${i}`, emoji: theme.a.e, label: `${theme.a.n} ${i}`, canRow: true });
+            items.push({ id: `b${i}`, emoji: theme.b.e, label: `${theme.b.n} ${i}`, canRow: i < N || easing > 0 });
         }
         return {
             title: `${N} ${theme.a.n}s & ${theme.b.n}s`,
@@ -78,7 +168,7 @@ const getPuzzleForLevel = (level: number): Puzzle => {
             },
             hint: `The ${theme.b.n}s (${theme.b.e}) must never outnumber the ${theme.a.n}s (${theme.a.e}) on either side!`,
             minMoves: N * 4 - 1,
-            boatCapacity: Math.max(2, N - 1),
+            boatCapacity: Math.max(2, N - 1) + Math.floor(easing / 2),
         };
     } else {
         // Protect
@@ -95,8 +185,8 @@ const getPuzzleForLevel = (level: number): Puzzle => {
 
         const items = [];
         for (let i = 1; i <= N; i++) {
-            items.push({ id: `p${i}`, emoji: theme.p.e, label: `${theme.p.n} ${i}` });
-            items.push({ id: `c${i}`, emoji: theme.c.e, label: `${theme.c.n} ${i}` });
+            items.push({ id: `p${i}`, emoji: theme.p.e, label: `${theme.p.n} ${i}`, canRow: true });
+            items.push({ id: `c${i}`, emoji: theme.c.e, label: `${theme.c.n} ${i}`, canRow: N > 3 || i === 1 || easing > 0 });
         }
         return {
             title: `${N} Protectors & Wards`,
@@ -108,7 +198,7 @@ const getPuzzleForLevel = (level: number): Puzzle => {
             },
             hint: `A ${theme.c.n} (${theme.c.e}) cannot be with another ${theme.p.n} (${theme.p.e}) unless their own ${theme.p.n} is present.`,
             minMoves: N * 4 - 3,
-            boatCapacity: Math.max(2, N - 1),
+            boatCapacity: Math.max(2, N - 1) + Math.floor(easing / 2),
         };
     }
 };
@@ -164,10 +254,20 @@ export default function RiverCrossing() {
         const newFrom = fromSide.filter(x => !boatLoad.includes(x));
         const newTo = [...toSide, ...boatLoad];
 
-        // Only check the side the farmer is LEAVING — those items are now unsupervised.
-        // The destination side is safe because the farmer arrives there.
+        if (boatLoad.length === 0) {
+            setErrorMsg('The boat is empty!');
+            return;
+        }
+
+        const hasRower = boatLoad.some(id => puzzle.items.find(x => x.id === id)?.canRow);
+        if (!hasRower) {
+            setErrorMsg('Someone needs to row the boat! (Look for the 🛶 icon)');
+            return;
+        }
+
+        // Only check the side the boat is LEAVING — those items are now unsupervised.
         if (puzzle.isIllegal(newFrom)) {
-            setErrorMsg(`You left a dangerous pair alone on the ${boatSide === 'left' ? 'left' : 'right'} bank!`);
+            setErrorMsg(`Chaos ensued on the ${boatSide === 'left' ? 'left' : 'right'} bank! You left a dangerous combination unsupervised.`);
             setGameState('lost');
             return;
         }
@@ -202,10 +302,10 @@ export default function RiverCrossing() {
                     <Text style={s.title}>River Crossing</Text>
                     <Text style={s.sub}>Transport everyone safely — but follow the rules!</Text>
                     <View style={s.rules}>
-                        <Text style={s.rule}>• Tap items on the bank to load onto the boat</Text>
-                        <Text style={s.rule}>• Each puzzle shows the boat capacity (1 or 2 items max)</Text>
-                        <Text style={s.rule}>• Press Row → to cross — the farmer always travels with the boat</Text>
-                        <Text style={s.rule}>• You can cross with an empty boat to drop someone off alone</Text>
+                        <Text style={s.rule}>• Tap items to load them onto the boat</Text>
+                        <Text style={s.rule}>• Each puzzle shows the boat's max capacity</Text>
+                        <Text style={s.rule}>• At least one person in the boat MUST know how to row (🛶)</Text>
+                        <Text style={s.rule}>• Press Row → to cross</Text>
                         <Text style={s.rule}>• Certain combinations left alone on a bank are dangerous!</Text>
                     </View>
                     <Button title={loading ? 'Loading…' : `Start Level ${level}`} onPress={() => startLevel(level)} disabled={loading} style={s.btn} />
@@ -227,8 +327,11 @@ export default function RiverCrossing() {
                                     onPress={() => boatSide === 'left' && toggleBoat(it.id)}
                                     style={[s.item, boatLoad.includes(it.id) && s.itemSelected]}
                                 >
-                                    <Text style={s.itemEmoji}>{it.emoji}</Text>
-                                    <Text style={s.itemLabel}>{it.label}</Text>
+                                    <View style={s.itemContent}>
+                                        <Text style={s.itemEmoji}>{it.emoji}</Text>
+                                        <Text style={s.itemLabel}>{it.label}</Text>
+                                    </View>
+                                    {it.canRow && <Text style={s.rowerIcon}>🛶</Text>}
                                 </TouchableOpacity>
                             ))}
                         </View>
@@ -237,12 +340,13 @@ export default function RiverCrossing() {
                         <View style={s.river}>
                             <Text style={s.riverLabel}>🌊</Text>
                             <View style={[s.boat, { alignSelf: 'center' }]}>
-                                <Text style={s.boatText}>⛵ 👨‍🌾</Text>
-                                {boatLoad.map(id => {
-                                    const it = puzzle.items.find(x => x.id === id);
-                                    return it ? <Text key={id} style={s.boatItem}>{it.emoji}</Text> : null;
-                                })}
-                                <Text style={s.boatCapacity}>{boatLoad.length}/{puzzle.boatCapacity}</Text>
+                                <View style={s.boatItemContainer}>
+                                    {boatLoad.map(id => {
+                                        const it = puzzle.items.find(x => x.id === id);
+                                        return it ? <Text key={id} style={s.boatItem}>{it.emoji}</Text> : null;
+                                    })}
+                                </View>
+                                <Text style={s.boatCapacity}>{boatLoad.length}/{puzzle.boatCapacity} size</Text>
                             </View>
                             <TouchableOpacity style={s.rowBtn} onPress={row}>
                                 <Text style={s.rowBtnText}>{boatSide === 'left' ? 'Row →' : '← Row'}</Text>
@@ -258,8 +362,11 @@ export default function RiverCrossing() {
                                     onPress={() => boatSide === 'right' && toggleBoat(it.id)}
                                     style={[s.item, boatLoad.includes(it.id) && s.itemSelected]}
                                 >
-                                    <Text style={s.itemEmoji}>{it.emoji}</Text>
-                                    <Text style={s.itemLabel}>{it.label}</Text>
+                                    <View style={s.itemContent}>
+                                        <Text style={s.itemEmoji}>{it.emoji}</Text>
+                                        <Text style={s.itemLabel}>{it.label}</Text>
+                                    </View>
+                                    {it.canRow && <Text style={s.rowerIcon}>🛶</Text>}
                                 </TouchableOpacity>
                             ))}
                         </View>
@@ -314,15 +421,17 @@ const s = StyleSheet.create({
     scene: { flexDirection: 'row', gap: 8 },
     bank: { flex: 1, backgroundColor: '#f0fdf4', borderRadius: 16, padding: 10, gap: 8, minHeight: 200 },
     bankLabel: { fontWeight: '800', fontSize: 13, color: '#15803d', textAlign: 'center', marginBottom: 4 },
-    item: { backgroundColor: '#fff', borderRadius: 12, padding: 8, alignItems: 'center', borderWidth: 2, borderColor: '#e2e8f0' },
+    item: { backgroundColor: '#fff', borderRadius: 12, padding: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 2, borderColor: '#e2e8f0' },
+    itemContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     itemSelected: { borderColor: '#4f46e5', backgroundColor: '#eef2ff' },
     itemEmoji: { fontSize: 24 },
-    itemLabel: { fontSize: 10, fontWeight: '700', color: '#475569', marginTop: 2 },
+    itemLabel: { fontSize: 10, fontWeight: '700', color: '#475569' },
+    rowerIcon: { fontSize: 14 },
     river: { width: 80, alignItems: 'center', gap: 8, justifyContent: 'center' },
     riverLabel: { fontSize: 28 },
-    boat: { backgroundColor: '#bfdbfe', borderRadius: 10, padding: 8, alignItems: 'center', width: 70, minHeight: 60 },
-    boatCapacity: { fontSize: 9, fontWeight: '700', color: '#3b82f6', marginTop: 2 },
-    boatText: { fontSize: 24 },
+    boat: { backgroundColor: '#bfdbfe', borderRadius: 10, padding: 8, alignItems: 'center', justifyContent: 'center', width: 70, minHeight: 60 },
+    boatCapacity: { fontSize: 9, fontWeight: '700', color: '#3b82f6', marginTop: 4 },
+    boatItemContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
     boatItem: { fontSize: 18 },
     rowBtn: { backgroundColor: '#4f46e5', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginTop: 8 },
     rowBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },

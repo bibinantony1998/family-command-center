@@ -7,21 +7,110 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import confetti from 'canvas-confetti';
 
-interface Item { id: string; emoji: string; label: string; }
+interface Item { id: string; emoji: string; label: string; canRow?: boolean; }
 interface Puzzle {
     title: string;
     items: Item[];
     isIllegal: (side: string[]) => boolean;
     hint: string;
     minMoves: number;
-    boatCapacity: number; // max items the farmer can take (not counting farmer)
+    boatCapacity: number; // max items the boat can take
 }
 
+const isSolvable = (puzzle: Puzzle): number => {
+    const M = puzzle.items.length;
+    const allMask = (1 << M) - 1;
+
+    const queue: [number, boolean, number][] = [[allMask, true, 0]];
+    const visited = new Set<string>();
+    visited.add(`${allMask}-true`);
+
+    while (queue.length > 0) {
+        const item = queue.shift();
+        if (!item) break;
+        const [leftMask, isBoatLeft, moves] = item;
+        if (leftMask === 0 && !isBoatLeft) return moves;
+
+        if (moves > 100) return -1; // safeguard
+
+        const currentBankMask = isBoatLeft ? leftMask : (allMask ^ leftMask);
+
+        const combos: number[] = [];
+        let sub = currentBankMask;
+        while (sub > 0) {
+            let count = 0;
+            let hasRower = false;
+            for (let i = 0; i < M; i++) {
+                if ((sub & (1 << i)) !== 0) {
+                    count++;
+                    if (puzzle.items[i].canRow) hasRower = true;
+                }
+            }
+            if (count >= 1 && count <= puzzle.boatCapacity && hasRower) {
+                combos.push(sub);
+            }
+            sub = (sub - 1) & currentBankMask;
+        }
+
+        for (const boatMask of combos) {
+            const nextLeftMask = isBoatLeft ? (leftMask ^ boatMask) : (leftMask | boatMask);
+            const nextRightMask = allMask ^ nextLeftMask;
+
+            const getIds = (mask: number) => puzzle.items.filter((_, i) => (mask & (1 << i)) !== 0).map(x => x.id);
+
+            if (puzzle.isIllegal(getIds(nextLeftMask))) continue;
+            if (puzzle.isIllegal(getIds(nextRightMask))) continue;
+
+            const stateKey = `${nextLeftMask}-${!isBoatLeft}`;
+            if (!visited.has(stateKey)) {
+                visited.add(stateKey);
+                queue.push([nextLeftMask, !isBoatLeft, moves + 1]);
+            }
+        }
+    }
+    return -1;
+};
+
 const getPuzzleForLevel = (level: number): Puzzle => {
+    let easing = 0;
+    while (true) {
+        const p = generateBasePuzzle(level, easing);
+        if (level === 1) return p; // Bypass check for tutorial
+        const moves = isSolvable(p);
+        if (moves !== -1) {
+            p.minMoves = moves;
+            return p;
+        }
+        easing++;
+        if (easing > 5) return p; // Fallback
+    }
+};
+
+const generateBasePuzzle = (level: number, easing: number): Puzzle => {
     const cycle = (level - 1) % 3; // 0 = Food Chain, 1 = Outnumber, 2 = Protect
     const difficultyGroup = Math.floor((level - 1) / 3);
 
     if (cycle === 0) {
+        if (level === 1) {
+            return {
+                title: 'Farmer, Fox, Chicken & Grain',
+                items: [
+                    { id: 'farmer', emoji: '🧑‍🌾', label: 'Farmer', canRow: true },
+                    { id: 'fox', emoji: '🦊', label: 'Fox', canRow: false },
+                    { id: 'chicken', emoji: '🐔', label: 'Chicken', canRow: false },
+                    { id: 'grain', emoji: '🌾', label: 'Grain', canRow: false },
+                ],
+                isIllegal: (side) =>
+                    !side.includes('farmer') && (
+                        (side.includes('fox') && side.includes('chicken')) ||
+                        (side.includes('chicken') && side.includes('grain'))
+                    ),
+                hint: 'Fox eats chicken; chicken eats grain. Only the Farmer can row the boat!',
+                minMoves: 7,
+                boatCapacity: 2,
+            };
+        }
+
         // Food Chain
         const N = Math.min(7, 3 + difficultyGroup);
         const CHAINS = [
@@ -34,8 +123,8 @@ const getPuzzleForLevel = (level: number): Puzzle => {
         ];
         const chain = CHAINS[N];
 
-        const items = chain.map((it, i) => ({ id: `i${i}`, emoji: it.e, label: it.n }));
-        const cap = Math.floor(N / 2);
+        const items = chain.map((it, i) => ({ id: `i${i}`, emoji: it.e, label: it.n, canRow: i < Math.max(1, N - 2) }));
+        const cap = Math.floor(N / 2) + easing;
 
         return {
             title: `Food Chain (${N} items)`,
@@ -66,8 +155,9 @@ const getPuzzleForLevel = (level: number): Puzzle => {
 
         const items = [];
         for (let i = 1; i <= N; i++) {
-            items.push({ id: `a${i}`, emoji: theme.a.e, label: `${theme.a.n} ${i}` });
-            items.push({ id: `b${i}`, emoji: theme.b.e, label: `${theme.b.n} ${i}` });
+            // Make one member of the B faction unable to row as a twist
+            items.push({ id: `a${i}`, emoji: theme.a.e, label: `${theme.a.n} ${i}`, canRow: true });
+            items.push({ id: `b${i}`, emoji: theme.b.e, label: `${theme.b.n} ${i}`, canRow: i < N || easing > 0 });
         }
         return {
             title: `${N} ${theme.a.n}s & ${theme.b.n}s`,
@@ -79,7 +169,7 @@ const getPuzzleForLevel = (level: number): Puzzle => {
             },
             hint: `The ${theme.b.n}s (${theme.b.e}) must never outnumber the ${theme.a.n}s (${theme.a.e}) on either side!`,
             minMoves: N * 4 - 1,
-            boatCapacity: Math.max(2, N - 1),
+            boatCapacity: Math.max(2, N - 1) + Math.floor(easing / 2),
         };
     } else {
         // Protect
@@ -96,8 +186,10 @@ const getPuzzleForLevel = (level: number): Puzzle => {
 
         const items = [];
         for (let i = 1; i <= N; i++) {
-            items.push({ id: `p${i}`, emoji: theme.p.e, label: `${theme.p.n} ${i}` });
-            items.push({ id: `c${i}`, emoji: theme.c.e, label: `${theme.c.n} ${i}` });
+            // Wards generally cannot row, increasing difficulty
+            // But ensure at least some combination works by letting 1 ward row if needed
+            items.push({ id: `p${i}`, emoji: theme.p.e, label: `${theme.p.n} ${i}`, canRow: true });
+            items.push({ id: `c${i}`, emoji: theme.c.e, label: `${theme.c.n} ${i}`, canRow: N > 3 || i === 1 || easing > 0 });
         }
         return {
             title: `${N} Protectors & Wards`,
@@ -109,7 +201,7 @@ const getPuzzleForLevel = (level: number): Puzzle => {
             },
             hint: `A ${theme.c.n} (${theme.c.e}) cannot be with another ${theme.p.n} (${theme.p.e}) unless their own ${theme.p.n} is present.`,
             minMoves: N * 4 - 3,
-            boatCapacity: Math.max(2, N - 1),
+            boatCapacity: Math.max(2, N - 1) + Math.floor(easing / 2),
         };
     }
 };
@@ -164,11 +256,21 @@ export default function RiverCrossing() {
         const newFrom = fromSide.filter(x => !boatLoad.includes(x));
         const newTo = [...toSide, ...boatLoad];
 
-        // Only the FROM side is left without the farmer — check that for danger.
-        // The TO side is safe because the farmer arrives there.
+        if (boatLoad.length === 0) {
+            setError('The boat is empty!');
+            return;
+        }
+
+        const hasRower = boatLoad.some(id => puzzle.items.find(x => x.id === id)?.canRow);
+        if (!hasRower) {
+            setError('Someone needs to row the boat! (Look for the 🛶 icon)');
+            return;
+        }
+
+        // Only the FROM side is left unsupervised — check that for danger.
         if (puzzle.isIllegal(newFrom)) {
             const bankName = boatSide === 'left' ? 'left' : 'right';
-            setError(`💥 You left a dangerous pair alone on the ${bankName} bank without the farmer!`);
+            setError(`💥 Chaos ensued on the ${bankName} bank! You left a dangerous combination unsupervised.`);
             setGameState('lost');
             return;
         }
@@ -201,10 +303,10 @@ export default function RiverCrossing() {
                         <h1 className="text-3xl font-bold text-slate-800">River Crossing</h1>
                         <p className="text-slate-500">Transport everyone safely across the river — without leaving dangerous pairs alone!</p>
                         <div className="bg-slate-50 p-4 rounded-xl text-left text-sm space-y-2">
-                            <p>• Click items on a bank to load them onto the boat — capacity varies per puzzle (1 or 2)</p>
-                            <p>• The farmer always rides the boat — you can cross with an empty boat too</p>
-                            <p>• Click <strong>Row →</strong> to cross</p>
-                            <p>• Certain combinations left unsupervised cause trouble!</p>
+                            <p>• Click items to load them onto the boat (capacity varies per puzzle).</p>
+                            <p>• <strong>IMPORTANT:</strong> At least one person in the boat must know how to row (🛶)!</p>
+                            <p>• Click <strong>Row →</strong> to cross.</p>
+                            <p>• Never leave dangerous combinations unsupervised on a riverbank!</p>
                         </div>
                         <Button onClick={() => startLevel(level)} disabled={isLoading} className="w-full h-12 text-lg">
                             {isLoading ? 'Loading...' : `Start Level ${level}`}
@@ -235,9 +337,12 @@ export default function RiverCrossing() {
                                     const inBoat = boatLoad.includes(id);
                                     return (
                                         <button key={id} onClick={() => boatSide === 'left' && toggleBoat(id)}
-                                            className={`flex items-center gap-2 p-2 rounded-xl border-2 transition-all text-left ${inBoat ? 'bg-indigo-100 border-indigo-400' : 'bg-white border-slate-200 hover:border-indigo-300'} ${boatSide !== 'left' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                                            <span className="text-2xl">{it.emoji}</span>
-                                            <span className="text-xs font-bold text-slate-600">{it.label}</span>
+                                            className={`flex justify-between items-center p-2 rounded-xl border-2 transition-all w-full text-left ${inBoat ? 'bg-indigo-100 border-indigo-400' : 'bg-white border-slate-200 hover:border-indigo-300'} ${boatSide !== 'left' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-2xl">{it.emoji}</span>
+                                                <span className="text-xs font-bold text-slate-600">{it.label}</span>
+                                            </div>
+                                            {it.canRow && <span className="text-xs" title="Can Row">🛶</span>}
                                         </button>
                                     );
                                 })}
@@ -247,9 +352,8 @@ export default function RiverCrossing() {
                         {/* RIVER / BOAT */}
                         <div className="w-24 flex flex-col items-center justify-center gap-3">
                             <div className="text-3xl">🌊</div>
-                            <div className="bg-blue-100 border-2 border-blue-300 rounded-xl p-2 w-full text-center transition-all">
-                                <div className="text-xl">⛵ 👨‍🌾</div>
-                                <div className="text-lg leading-none min-h-[1.5rem]">
+                            <div className="bg-blue-100 border-2 border-blue-300 rounded-xl p-2 w-full text-center transition-all min-h-[5rem] flex flex-col justify-center">
+                                <div className="text-lg leading-none flex justify-center gap-1 flex-wrap">
                                     {boatLoad.map(id => puzzle.items.find(x => x.id === id)?.emoji).join(' ')}
                                 </div>
                                 <div className="text-xs text-blue-600 font-semibold mt-1">
@@ -270,9 +374,12 @@ export default function RiverCrossing() {
                                     const inBoat = boatLoad.includes(id);
                                     return (
                                         <button key={id} onClick={() => boatSide === 'right' && toggleBoat(id)}
-                                            className={`flex items-center gap-2 p-2 rounded-xl border-2 transition-all text-left ${inBoat ? 'bg-indigo-100 border-indigo-400' : 'bg-white border-slate-200 hover:border-indigo-300'} ${boatSide !== 'right' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                                            <span className="text-2xl">{it.emoji}</span>
-                                            <span className="text-xs font-bold text-slate-600">{it.label}</span>
+                                            className={`flex justify-between items-center p-2 rounded-xl border-2 transition-all w-full text-left ${inBoat ? 'bg-indigo-100 border-indigo-400' : 'bg-white border-slate-200 hover:border-indigo-300'} ${boatSide !== 'right' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-2xl">{it.emoji}</span>
+                                                <span className="text-xs font-bold text-slate-600">{it.label}</span>
+                                            </div>
+                                            {it.canRow && <span className="text-xs" title="Can Row">🛶</span>}
                                         </button>
                                     );
                                 })}
