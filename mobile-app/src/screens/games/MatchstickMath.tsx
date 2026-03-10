@@ -38,18 +38,74 @@ interface Puzzle {
     hint: string;
 }
 
-const PUZZLES: Puzzle[] = [
-    { tokens: ['6', '+', '4', '=', '4'], editableIndices: [0, 2, 4], movesAllowed: 1, hint: 'Change one segment to make 6+4=10 or 6-4=2' },
-    { tokens: ['5', '+', '3', '=', '6'], editableIndices: [0, 2, 4], movesAllowed: 1, hint: 'The result should be 8' },
-    { tokens: ['8', '-', '4', '=', '5'], editableIndices: [0, 2, 4], movesAllowed: 1, hint: 'Change 8 into 9' },
-    { tokens: ['2', '+', '3', '=', '4'], editableIndices: [0, 2, 4], movesAllowed: 1, hint: 'The result should be 5' },
-    { tokens: ['1', '+', '0', '=', '9'], editableIndices: [0, 2, 4], movesAllowed: 1, hint: 'Change 0 on the right to 9' },
-    { tokens: ['9', '-', '5', '=', '5'], editableIndices: [0, 2, 4], movesAllowed: 1, hint: 'Change 5 on the left to 4' },
-    { tokens: ['3', '+', '3', '=', '9'], editableIndices: [0, 2, 4], movesAllowed: 1, hint: 'Turn the 9 into a 6' },
-    { tokens: ['7', '-', '2', '=', '4'], editableIndices: [0, 2, 4], movesAllowed: 1, hint: 'Change 4 to 5' },
-    { tokens: ['6', '÷', '2', '=', '4'], editableIndices: [0, 2, 4], movesAllowed: 1, hint: 'Change the 4 to 3' },
-    { tokens: ['4', '+', '5', '=', '8'], editableIndices: [0, 2, 4], movesAllowed: 1, hint: 'Change 8 into 9' },
-];
+const TRANSFORMS: Record<string, { add: string[], remove: string[], internal: string[] }> = {};
+for (let i = 0; i <= 9; i++) {
+    const d = i.toString();
+    TRANSFORMS[d] = {
+        add: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(x => SEGMENTS[x].length === SEGMENTS[i].length + 1 && SEGMENTS[i].every(s => SEGMENTS[x].includes(s))).map(String),
+        remove: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(x => SEGMENTS[x].length === SEGMENTS[i].length - 1 && SEGMENTS[x].every(s => SEGMENTS[i].includes(s))).map(String),
+        internal: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(x => x !== i && SEGMENTS[x].length === SEGMENTS[i].length && Object.keys(SEGMENTS[x]).length === Object.keys(SEGMENTS[i]).length && SEGMENTS[i].map((v, i) => v === SEGMENTS[x][i]).filter(x => !x).length === 2).map(String)
+    };
+}
+TRANSFORMS['+'] = { add: [], remove: ['-'], internal: [] };
+TRANSFORMS['-'] = { add: ['+'], remove: [], internal: [] };
+
+const GENERATED_PUZZLES: Puzzle[] = [];
+
+(() => {
+    for (let i = 0; i <= 9; i++) {
+        for (let j = 0; j <= 9; j++) {
+            const valid = [];
+            if (i + j <= 9) valid.push({ a: i.toString(), op: '+', b: j.toString(), c: (i + j).toString() });
+            if (i - j >= 0) valid.push({ a: i.toString(), op: '-', b: j.toString(), c: (i - j).toString() });
+
+            for (const eq of valid) {
+                const parts = [
+                    { key: 'a', val: eq.a, name: 'first number', idx: 0 },
+                    { key: 'op', val: eq.op, name: 'operator', idx: 1 },
+                    { key: 'b', val: eq.b, name: 'second number', idx: 2 },
+                    { key: 'c', val: eq.c, name: 'result', idx: 4 }
+                ];
+
+                const processBroken = (brokenParts: { a: string, op: string, b: string, c: string }, hint: string) => {
+                    const isTrue = brokenParts.op === '+'
+                        ? parseInt(brokenParts.a) + parseInt(brokenParts.b) === parseInt(brokenParts.c)
+                        : parseInt(brokenParts.a) - parseInt(brokenParts.b) === parseInt(brokenParts.c);
+
+                    if (!isTrue) {
+                        GENERATED_PUZZLES.push({
+                            tokens: [brokenParts.a, brokenParts.op, brokenParts.b, '=', brokenParts.c],
+                            editableIndices: brokenParts.op === '+' || brokenParts.op === '-' ? [0, 1, 2, 4] : [0, 2, 4],
+                            movesAllowed: 1,
+                            hint
+                        });
+                    }
+                };
+
+                for (const p of parts) {
+                    for (const internal of TRANSFORMS[p.val]?.internal || []) {
+                        processBroken({ ...eq, [p.key]: internal }, `Move a matchstick in the ${p.name}.`);
+                    }
+                }
+
+                for (let x = 0; x < parts.length; x++) {
+                    for (let y = 0; y < parts.length; y++) {
+                        if (x === y) continue;
+                        const p1 = parts[x];
+                        const p2 = parts[y];
+                        for (const r of TRANSFORMS[p1.val]?.remove || []) {
+                            for (const a of TRANSFORMS[p2.val]?.add || []) {
+                                processBroken({ ...eq, [p1.key]: r, [p2.key]: a }, `Move a stick from the ${p1.name} to the ${p2.name}.`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Seeded shuffle
+    GENERATED_PUZZLES.sort(() => Math.random() - 0.5);
+})();
 
 const W = Dimensions.get('window').width;
 const DIGIT_W = Math.min(52, (W - 80) / 5);
@@ -147,7 +203,7 @@ export default function MatchstickMath() {
         getHighestLevel('matchstick-math').then(l => { setLevel(l); setLoading(false); });
     }, []);
 
-    const puzzle = PUZZLES[puzzleIdx % PUZZLES.length];
+    const puzzle = GENERATED_PUZZLES[puzzleIdx % GENERATED_PUZZLES.length];
 
     const initDigitStates = (p: Puzzle) => {
         const ds: Record<number, number[]> = {};
@@ -158,8 +214,8 @@ export default function MatchstickMath() {
     };
 
     const startLevel = (lvl: number) => {
-        setPuzzleIdx((lvl - 1) % PUZZLES.length);
-        setDigitStates(initDigitStates(PUZZLES[(lvl - 1) % PUZZLES.length]));
+        setPuzzleIdx((lvl - 1) % GENERATED_PUZZLES.length);
+        setDigitStates(initDigitStates(GENERATED_PUZZLES[(lvl - 1) % GENERATED_PUZZLES.length]));
         setRemoved(null);
         setHintVisible(false);
         setGameState('playing');
@@ -211,7 +267,7 @@ export default function MatchstickMath() {
     const next = () => {
         const nextIdx = puzzleIdx + 1;
         setPuzzleIdx(nextIdx);
-        const nextPuzzle = PUZZLES[nextIdx % PUZZLES.length];
+        const nextPuzzle = GENERATED_PUZZLES[nextIdx % GENERATED_PUZZLES.length];
         setDigitStates(initDigitStates(nextPuzzle));
         setRemoved(null);
         setHintVisible(false);
@@ -228,7 +284,7 @@ export default function MatchstickMath() {
                 <TouchableOpacity onPress={() => navigation.goBack()} style={s.iconBtn}><X size={22} color="#64748b" /></TouchableOpacity>
                 {gameState === 'playing' && (
                     <>
-                        <Text style={s.badge}>Level {level} • Score: {score} • Puzzle {(puzzleIdx % PUZZLES.length) + 1}/{PUZZLES.length}</Text>
+                        <Text style={s.badge}>Level {level} • Score: {score} • Puzzle {(puzzleIdx % GENERATED_PUZZLES.length) + 1}/{GENERATED_PUZZLES.length}</Text>
                         <TouchableOpacity onPress={resetPuzzle} style={s.iconBtn}><RefreshCw size={18} color="#64748b" /></TouchableOpacity>
                     </>
                 )}

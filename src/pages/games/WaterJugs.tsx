@@ -47,6 +47,36 @@ const LEVELS_CONFIG = [
     { target: 1, jugs: [41, 31, 22, 17] },      // Level 25 – endgame
 ];
 
+const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
+const getArrayGcd = (arr: number[]): number => arr.reduce((acc, val) => gcd(acc, val));
+
+const getLevelConfig = (level: number) => {
+    if (level <= LEVELS_CONFIG.length) return LEVELS_CONFIG[level - 1];
+
+    const numJugs = Math.min(6, Math.floor(level / 10) + 2); // e.g., level 26: 4 jugs
+    const minCap = 3;
+    const maxCap = Math.min(200, 15 + Math.floor(level / 2));
+
+    const generatedJugs: number[] = [];
+    while (generatedJugs.length < numJugs) {
+        const cap = Math.floor(Math.random() * (maxCap - minCap + 1)) + minCap;
+        if (!generatedJugs.includes(cap)) {
+            generatedJugs.push(cap);
+        }
+    }
+    generatedJugs.sort((a, b) => b - a);
+
+    const arrayGcd = getArrayGcd(generatedJugs);
+    const validTargets = [];
+    const maxJug = generatedJugs[0];
+    for (let i = arrayGcd; i < maxJug; i += arrayGcd) {
+        if (!generatedJugs.includes(i)) validTargets.push(i);
+    }
+
+    const target = validTargets.length > 0 ? validTargets[Math.floor(Math.random() * validTargets.length)] : arrayGcd;
+    return { target, jugs: generatedJugs };
+};
+
 export default function WaterJugs() {
     const navigate = useNavigate();
     const { profile } = useAuth();
@@ -55,7 +85,7 @@ export default function WaterJugs() {
     const [gameState, setGameState] = useState<'intro' | 'playing' | 'level-up' | 'game-over' | 'completed'>('intro');
     const [jugs, setJugs] = useState<Jug[]>([]);
     const [selectedJug, setSelectedJug] = useState<number | null>(null);
-    // const [message, setMessage] = useState('');
+    const [targetAmount, setTargetAmount] = useState<number>(0);
     const [moves, setMoves] = useState(0);
 
     const [highestUnlockedLevel, setHighestUnlockedLevel] = useState(1);
@@ -76,32 +106,26 @@ export default function WaterJugs() {
             const next = maxLevel + 1;
             setHighestUnlockedLevel(next);
             setIsLoading(false);
-
-            if (next > LEVELS_CONFIG.length) {
-                setGameState('completed');
-            }
         };
         fetchProgress();
     }, [profile]);
 
     const startLevel = (lvl: number) => {
-        const config = LEVELS_CONFIG[lvl - 1] || LEVELS_CONFIG[0];
+        const config = getLevelConfig(lvl);
+        setTargetAmount(config.target);
         setJugs(config.jugs.map((cap, i) => ({ id: i, capacity: cap, current: 0 })));
         setGameState('playing');
         setMoves(0);
         setSelectedJug(null);
-        // setMessage('');
     };
 
     const startGame = () => {
-        if (highestUnlockedLevel > LEVELS_CONFIG.length) return;
         setLevel(highestUnlockedLevel);
         startLevel(highestUnlockedLevel);
     };
 
     const checkWin = async (currentJugs: Jug[]) => {
-        const config = LEVELS_CONFIG[level - 1];
-        if (currentJugs.some(j => j.current === config.target)) {
+        if (currentJugs.some(j => j.current === targetAmount)) {
             // Win
             if (!profile) return;
 
@@ -118,13 +142,8 @@ export default function WaterJugs() {
                 console.error("Error saving score:", err);
             }
 
-            if (level >= LEVELS_CONFIG.length) {
-                setGameState('completed');
-                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
-            } else {
-                setGameState('level-up');
-                confetti({ particleCount: 50, spread: 50, origin: { y: 0.6 } });
-            }
+            setGameState('level-up');
+            confetti({ particleCount: 50, spread: 50, origin: { y: 0.6 } });
         }
     };
 
@@ -132,16 +151,11 @@ export default function WaterJugs() {
         if (gameState !== 'playing') return;
 
         if (selectedJug === null) {
-            // Select source
             setSelectedJug(index);
-            // setMessage('Select a destination jug to pour, or click action buttons below.');
         } else {
             if (selectedJug === index) {
-                // Deselect
                 setSelectedJug(null);
-                // setMessage('');
             } else {
-                // Pour from selected to index
                 pour(selectedJug, index);
             }
         }
@@ -154,7 +168,6 @@ export default function WaterJugs() {
         setJugs(newJugs);
         setMoves(m => m + 1);
         setSelectedJug(null);
-        // setMessage('');
         checkWin(newJugs);
     };
 
@@ -165,7 +178,6 @@ export default function WaterJugs() {
         setJugs(newJugs);
         setMoves(m => m + 1);
         setSelectedJug(null);
-        // setMessage('');
         checkWin(newJugs);
     };
 
@@ -181,8 +193,6 @@ export default function WaterJugs() {
             toJug.current += amountToPour;
             setJugs(newJugs);
             setMoves(m => m + 1);
-        } else {
-            // setMessage('Cannot pour (Source empty or Destination full)');
         }
 
         setSelectedJug(null);
@@ -229,7 +239,7 @@ export default function WaterJugs() {
 
                     <div className="text-center mb-4">
                         <p className="text-slate-500 text-sm uppercase tracking-wider font-bold">Goal</p>
-                        <h2 className="text-4xl font-bold text-slate-800">Measure {LEVELS_CONFIG[level - 1].target}L</h2>
+                        <h2 className="text-4xl font-bold text-slate-800">Measure {targetAmount}L</h2>
                     </div>
 
                     <div className="flex items-end justify-center gap-4 h-48 py-4">

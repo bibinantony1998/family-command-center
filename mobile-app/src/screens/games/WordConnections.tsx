@@ -10,47 +10,54 @@ interface Puzzle {
     groups: { theme: string; words: string[]; color: string }[];
 }
 
-const PUZZLES: Puzzle[] = [
-    {
-        groups: [
-            { theme: '🐾 Animals', words: ['LION', 'TIGER', 'BEAR', 'WOLF'], color: '#fbbf24' },
-            { theme: '🌈 Colors', words: ['RED', 'BLUE', 'GREEN', 'PINK'], color: '#60a5fa' },
-            { theme: '🍎 Fruits', words: ['MANGO', 'GRAPE', 'PEACH', 'PLUM'], color: '#34d399' },
-            { theme: '🏠 Rooms', words: ['HALL', 'ATTIC', 'PORCH', 'DEN'], color: '#f87171' },
-        ],
-    },
-    {
-        groups: [
-            { theme: '🌍 Countries', words: ['PERU', 'IRAN', 'FIJI', 'MALI'], color: '#fbbf24' },
-            { theme: '🎵 Instruments', words: ['HARP', 'LUTE', 'TUBA', 'OBOE'], color: '#60a5fa' },
-            { theme: '⛅ Weather', words: ['HAIL', 'SMOG', 'MIST', 'SLEET'], color: '#34d399' },
-            { theme: '🔢 Shapes', words: ['CUBE', 'CONE', 'OVAL', 'RHOMBUS'], color: '#f87171' },
-        ],
-    },
-    {
-        groups: [
-            { theme: '⚽ Sports', words: ['POLO', 'GOLF', 'JUDO', 'SUMO'], color: '#fbbf24' },
-            { theme: '🌊 Ocean', words: ['REEF', 'WAVE', 'TIDE', 'KELP'], color: '#60a5fa' },
-            { theme: '🍕 Foods', words: ['PITA', 'TOFU', 'BRIE', 'FETA'], color: '#34d399' },
-            { theme: '🎭 Emotions', words: ['RAGE', 'GLEE', 'FEAR', 'ENVY'], color: '#f87171' },
-        ],
-    },
-    {
-        groups: [
-            { theme: '🌳 Trees', words: ['OAK', 'ELM', 'ASH', 'YEW'], color: '#fbbf24' },
-            { theme: '💼 Jobs', words: ['CHEF', 'PILOT', 'NURSE', 'JUDGE'], color: '#60a5fa' },
-            { theme: '🎮 Games', words: ['CHESS', 'DARTS', 'BINGO', 'POKER'], color: '#34d399' },
-            { theme: '🌸 Flowers', words: ['ROSE', 'LILY', 'IRIS', 'DAHLIA'], color: '#f87171' },
-        ],
-    },
-    {
-        groups: [
-            { theme: '🦋 Insects', words: ['MOTH', 'FLEA', 'WASP', 'GNAT'], color: '#fbbf24' },
-            { theme: '🏔 Landforms', words: ['MESA', 'FJORD', 'DELTA', 'ATOLL'], color: '#60a5fa' },
-            { theme: '🎨 Art Styles', words: ['CUBISM', 'GOTHIC', 'BAROQUE', 'REALISM'], color: '#34d399' },
-            { theme: '🧪 Elements', words: ['IRON', 'GOLD', 'NEON', 'ZINC'], color: '#f87171' },
-        ],
-    },
+const CATEGORY_POOL = [
+    { theme: '🐾 Animals', words: ['LION', 'TIGER', 'BEAR', 'WOLF'] },
+    { theme: '🌈 Colors', words: ['RED', 'BLUE', 'GREEN', 'PINK'] },
+    { theme: '🍎 Fruits', words: ['MANGO', 'GRAPE', 'PEACH', 'PLUM'] },
+    { theme: '🏠 Rooms', words: ['HALL', 'ATTIC', 'PORCH', 'DEN'] },
+    { theme: '🌍 Countries', words: ['PERU', 'IRAN', 'FIJI', 'MALI'] },
+    { theme: '🎵 Instruments', words: ['HARP', 'LUTE', 'TUBA', 'OBOE'] },
+    { theme: '⛅ Weather', words: ['HAIL', 'SMOG', 'MIST', 'SLEET'] },
+    { theme: '🔢 Shapes', words: ['CUBE', 'CONE', 'OVAL', 'RHOMBUS'] },
+    { theme: '⚽ Sports', words: ['POLO', 'GOLF', 'JUDO', 'SUMO'] },
+    { theme: '🌊 Ocean', words: ['REEF', 'WAVE', 'TIDE', 'KELP'] },
+    { theme: '🍕 Foods', words: ['PITA', 'TOFU', 'BRIE', 'FETA'] },
+    { theme: '🎭 Emotions', words: ['RAGE', 'GLEE', 'FEAR', 'ENVY'] },
+    { theme: '🌳 Trees', words: ['OAK', 'ELM', 'ASH', 'YEW'] },
+    { theme: '💼 Jobs', words: ['CHEF', 'PILOT', 'NURSE', 'JUDGE'] },
+    { theme: '🎮 Games', words: ['CHESS', 'DARTS', 'BINGO', 'POKER'] },
+    { theme: '🌸 Flowers', words: ['ROSE', 'LILY', 'IRIS', 'DAHLIA'] },
+    { theme: '🦋 Insects', words: ['MOTH', 'FLEA', 'WASP', 'GNAT'] },
+    { theme: '🏔 Landforms', words: ['MESA', 'FJORD', 'DELTA', 'ATOLL'] },
+    { theme: '🎨 Art Styles', words: ['CUBISM', 'GOTHIC', 'BAROQUE', 'REALISM'] },
+    { theme: '🧪 Elements', words: ['IRON', 'GOLD', 'NEON', 'ZINC'] },
+    { theme: '🚗 Vehicles', words: ['CAR', 'TAXI', 'JEEP', 'VAN'] },
+    { theme: '👕 Clothing', words: ['SHIRT', 'PANTS', 'VEST', 'SOCK'] },
+    { theme: '🪐 Planets', words: ['MARS', 'VENUS', 'PLUTO', 'EARTH'] },
+    { theme: '🗡 Weapons', words: ['SWORD', 'SPEAR', 'BOW', 'AXE'] },
+    { theme: '💎 Gems', words: ['RUBY', 'OPAL', 'JADE', 'ONYX'] },
+    { theme: '🪙 Currencies', words: ['EURO', 'PESO', 'BAHT', 'RAND'] },
+    { theme: '☕ Beverages', words: ['TEA', 'MILK', 'SODA', 'WINE'] },
+    { theme: '🪵 Materials', words: ['WOOD', 'SILK', 'CLAY', 'IRON'] },
+    { theme: '🎸 Rock Bands', words: ['QUEEN', 'RUSH', 'KISS', 'ACDC'] },
+    { theme: '🐦 Birds', words: ['HAWK', 'DOVE', 'CROW', 'SWAN'] },
+    { theme: '🔧 Tools', words: ['SAW', 'FILE', 'VICE', 'AWL'] },
+    { theme: '📚 Book Genres', words: ['SCI-FI', 'FANTASY', 'MYSTERY', 'HORROR'] },
+    { theme: '🏰 Buildings', words: ['HUT', 'FORT', 'BARN', 'TENT'] },
+    { theme: '🧭 Directions', words: ['NORTH', 'SOUTH', 'EAST', 'WEST'] },
+    { theme: '🧊 States of Matter', words: ['SOLID', 'LIQUID', 'GAS', 'PLASMA'] },
+    { theme: '🧀 Cheeses', words: ['BRIE', 'EDAM', 'GOUDA', 'SWISS'] },
+    { theme: '🍝 Pasta', words: ['ZITI', 'ORZO', 'PENNE', 'MACARONI'] },
+    { theme: '👟 Shoes', words: ['BOOT', 'CLOG', 'PUMP', 'FLAT'] },
+    { theme: '🤠 Wild West', words: ['LASSO', 'SPUR', 'CHAPS', 'RANCH'] },
+    { theme: '📱 Apps', words: ['TIKTOK', 'X', 'UBER', 'MAPS'] }
+];
+
+const COLORS = [
+    '#fbbf24',
+    '#60a5fa',
+    '#34d399',
+    '#f87171',
 ];
 
 function shuffle<T>(arr: T[]): T[] {
@@ -81,8 +88,9 @@ export default function WordConnectionsScreen() {
         getHighestLevel('word-connections').then(l => { setLevel(l); setLoading(false); });
     }, []);
 
-    const startLevel = (lvl: number) => {
-        const puz = PUZZLES[(lvl - 1) % PUZZLES.length];
+    const startLevel = () => {
+        const selectedCats = shuffle(CATEGORY_POOL).slice(0, 4);
+        const puz = { groups: selectedCats.map((c, i) => ({ ...c, color: COLORS[i] })) };
         setPuzzle(puz);
         const allWords = puz.groups.flatMap(g => g.words);
         setTiles(shuffle(allWords));
@@ -144,7 +152,7 @@ export default function WordConnectionsScreen() {
                         <Text style={s.ruleText}>• Only {MAX_MISTAKES} mistakes allowed</Text>
                         <Text style={s.ruleText}>• Color reveals solved groups</Text>
                     </View>
-                    <Button title={loading ? 'Loading…' : `Start Level ${level}`} onPress={() => startLevel(level)} disabled={loading} style={s.btn} />
+                    <Button title={loading ? 'Loading…' : `Start Level ${level}`} onPress={() => startLevel()} disabled={loading} style={s.btn} />
                 </View>
             )}
 
@@ -199,7 +207,7 @@ export default function WordConnectionsScreen() {
                     <Trophy size={64} color="#fbbf24" />
                     <Text style={s.resultTitle}>Connected! 🎉</Text>
                     <Text style={s.points}>+{(MAX_MISTAKES - mistakes + 1) * level * 3} Points</Text>
-                    <Button title="Next Puzzle" onPress={() => { const n = level + 1; setLevel(n); startLevel(n); }} style={s.btn} />
+                    <Button title="Next Puzzle" onPress={() => { const n = level + 1; setLevel(n); startLevel(); }} style={s.btn} />
                 </View>
             )}
 
@@ -207,7 +215,7 @@ export default function WordConnectionsScreen() {
                 <View style={s.center}>
                     <Text style={s.emoji}>😓</Text>
                     <Text style={s.resultTitle}>Too many mistakes!</Text>
-                    <Button title="Try Again" onPress={() => startLevel(level)} style={s.btn} />
+                    <Button title="Try Again" onPress={() => startLevel()} style={s.btn} />
                 </View>
             )}
         </View>

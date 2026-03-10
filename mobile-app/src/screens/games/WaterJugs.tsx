@@ -47,6 +47,36 @@ const LEVELS_CONFIG = [
     { target: 1, jugs: [41, 31, 22, 17] },      // Level 25 – endgame
 ];
 
+const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
+const getArrayGcd = (arr: number[]): number => arr.reduce((acc, val) => gcd(acc, val));
+
+const getLevelConfig = (level: number) => {
+    if (level <= LEVELS_CONFIG.length) return LEVELS_CONFIG[level - 1];
+
+    const numJugs = Math.min(6, Math.floor(level / 10) + 2); // e.g., level 26: 4 jugs
+    const minCap = 3;
+    const maxCap = Math.min(200, 15 + Math.floor(level / 2));
+
+    const generatedJugs: number[] = [];
+    while (generatedJugs.length < numJugs) {
+        const cap = Math.floor(Math.random() * (maxCap - minCap + 1)) + minCap;
+        if (!generatedJugs.includes(cap)) {
+            generatedJugs.push(cap);
+        }
+    }
+    generatedJugs.sort((a, b) => b - a);
+
+    const arrayGcd = getArrayGcd(generatedJugs);
+    const validTargets = [];
+    const maxJug = generatedJugs[0];
+    for (let i = arrayGcd; i < maxJug; i += arrayGcd) {
+        if (!generatedJugs.includes(i)) validTargets.push(i);
+    }
+
+    const target = validTargets.length > 0 ? validTargets[Math.floor(Math.random() * validTargets.length)] : arrayGcd;
+    return { target, jugs: generatedJugs };
+};
+
 export default function WaterJugsScreen() {
     const navigation = useNavigation();
     const insets = useSafeAreaInsets();
@@ -56,6 +86,7 @@ export default function WaterJugsScreen() {
     const [gameState, setGameState] = useState<'intro' | 'playing' | 'level-up'>('intro');
     const [jugs, setJugs] = useState<{ id: number, capacity: number, current: number }[]>([]);
     const [selectedJug, setSelectedJug] = useState<number | null>(null);
+    const [targetAmount, setTargetAmount] = useState<number>(0);
     const [moves, setMoves] = useState(0);
     const [loading, setLoading] = useState(true);
 
@@ -67,7 +98,8 @@ export default function WaterJugsScreen() {
     }, []);
 
     const startLevel = (lvl: number) => {
-        const config = LEVELS_CONFIG[lvl - 1] || LEVELS_CONFIG[0];
+        const config = getLevelConfig(lvl);
+        setTargetAmount(config.target);
         setJugs(config.jugs.map((cap, i) => ({ id: i, capacity: cap, current: 0 })));
         setGameState('playing');
         setMoves(0);
@@ -75,8 +107,7 @@ export default function WaterJugsScreen() {
     };
 
     const startGame = () => {
-        const lvl = level > LEVELS_CONFIG.length ? 1 : level;
-        startLevel(lvl);
+        startLevel(level);
     };
 
     const handlePress = (idx: number) => {
@@ -131,8 +162,7 @@ export default function WaterJugsScreen() {
     };
 
     const checkWin = (currentJugs: typeof jugs) => {
-        const target = LEVELS_CONFIG[level - 1].target;
-        if (currentJugs.some(j => j.current === target)) {
+        if (currentJugs.some(j => j.current === targetAmount)) {
             saveScore('water-jugs', level, level * 2);
             setGameState('level-up');
         }
@@ -163,7 +193,7 @@ export default function WaterJugsScreen() {
                         <GlassWater size={48} color="#0d9488" />
                     </View>
                     <Text style={styles.title}>Water Jugs</Text>
-                    <Text style={styles.subtitle}>Measure exactly {LEVELS_CONFIG[Math.min(level - 1, 9)].target}L</Text>
+                    <Text style={styles.subtitle}>Measure exactly {targetAmount || LEVELS_CONFIG[0].target}L</Text>
 
                     <View style={styles.rulesContainer}>
                         <Text style={styles.rulesTitle}>Rules:</Text>
@@ -181,7 +211,7 @@ export default function WaterJugsScreen() {
                     <View style={styles.gameContent}>
                         <View style={styles.goalContainer}>
                             <Text style={styles.goalLabel}>GOAL</Text>
-                            <Text style={styles.targetBig}>{LEVELS_CONFIG[level - 1].target}L</Text>
+                            <Text style={styles.targetBig}>{targetAmount}L</Text>
                             <Text style={styles.moves}>Moves: {moves}</Text>
                         </View>
 

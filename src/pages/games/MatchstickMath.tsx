@@ -15,20 +15,96 @@ interface MCPuzzle {
     explanation: string;
 }
 
-const PUZZLES: MCPuzzle[] = [
-    { broken: '6 + 4 = 4', choices: ['6 + 4 = 10', '6 – 4 = 2', '9 + 4 = 4', '6 + 4 = 14'], correct: 0, hint: 'Move one matchstick from the = sign.', explanation: 'Turn = into ≠ is not valid — move the extra line to turn 4 into 10.' },
-    { broken: '5 + 3 = 6', choices: ['5 + 3 = 8', '5 – 3 = 6', '5 + 3 = 9', '5 × 3 = 6'], correct: 0, hint: 'The result looks off by exactly 2.', explanation: 'Move one matchstick from the 6 to turn it into 8.' },
-    { broken: '8 – 4 = 5', choices: ['9 – 4 = 5', '8 – 4 = 4', '8 – 4 = 9', '8 – 3 = 5'], correct: 0, hint: 'Change the number on the left side.', explanation: 'Move one matchstick on the 8 to make it a 9: 9–4=5 ✓' },
-    { broken: '2 + 3 = 4', choices: ['2 + 3 = 5', '2 + 2 = 4', '2 – 3 = 4', '2 + 3 = 14'], correct: 0, hint: 'The result is one too few.', explanation: 'Move one matchstick from 4 to extend it to 5.' },
-    { broken: '1 × 0 = 9', choices: ['1 × 9 = 9', '1 × 0 = 0', '1 + 0 = 9', '7 × 0 = 9'], correct: 0, hint: 'What single-digit number × 9 = 9?', explanation: 'Slide one matchstick to turn the 0 after × into a 9: 1×9=9 ✓' },
-    { broken: '9 – 5 = 5', choices: ['9 – 4 = 5', '9 – 5 = 4', '9 + 5 = 5', '9 – 5 = 9'], correct: 0, hint: 'Change the subtrahend by one.', explanation: 'Move one matchstick on the 5 after – to make 4: 9–4=5 ✓' },
-    { broken: '3 + 3 = 9', choices: ['3 + 3 = 6', '3 – 3 = 9', '3 + 9 = 9', '3 + 3 = 3'], correct: 0, hint: 'Turn 9 into the correct result.', explanation: 'Move one matchstick on 9 to make it 6: 3+3=6 ✓' },
-    { broken: '7 – 2 = 4', choices: ['7 – 2 = 5', '1 – 2 = 4', '7 – 2 = 9', '7 + 2 = 4'], correct: 0, hint: 'The result needs just one extra segment.', explanation: 'Add a matchstick to 4 to form 5: 7–2=5 ✓' },
-    { broken: '6 ÷ 2 = 4', choices: ['6 ÷ 2 = 3', '0 ÷ 2 = 4', '6 + 2 = 4', '6 ÷ 2 = 1'], correct: 0, hint: 'The result should be half of 6.', explanation: 'Move one matchstick on the 4 to make it 3: 6÷2=3 ✓' },
-    { broken: '4 + 5 = 8', choices: ['4 + 5 = 9', '4 – 5 = 8', '4 × 5 = 8', '4 + 5 = 0'], correct: 0, hint: '4+5 is just one away from 8.', explanation: 'Move one matchstick on the 8 to turn it into 9: 4+5=9 ✓' },
-    { broken: '3 × 5 = 9', choices: ['3 × 5 = 15', '3 – 5 = 9', '3 × 5 = 19', '8 × 5 = 9'], correct: 0, hint: 'Move a matchstick to fix the result digit.', explanation: 'Move one stick on 9 to form 15 (two digits): 3×5=15 ✓' },
-    { broken: '1 + 7 = 6', choices: ['1 + 7 = 8', '1 – 7 = 6', '1 + 7 = 16', '4 + 7 = 6'], correct: 0, hint: 'The sum of 1 and 7 is straightforward.', explanation: '6 needs one more stick to become 8: 1+7=8 ✓' },
+const DIGIT_STICKS = [
+    [0, 1, 2, 3, 4, 5],     // 0
+    [1, 2],             // 1
+    [0, 1, 3, 4, 6],       // 2
+    [0, 1, 2, 3, 6],       // 3
+    [1, 2, 5, 6],         // 4
+    [0, 2, 3, 5, 6],       // 5
+    [0, 2, 3, 4, 5, 6],     // 6
+    [0, 1, 2],           // 7
+    [0, 1, 2, 3, 4, 5, 6],   // 8
+    [0, 1, 2, 3, 5, 6],     // 9
 ];
+
+const TRANSFORMS: Record<string, { add: string[], remove: string[], internal: string[] }> = {};
+for (let i = 0; i <= 9; i++) {
+    const d = i.toString();
+    TRANSFORMS[d] = {
+        add: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(x => DIGIT_STICKS[x].length === DIGIT_STICKS[i].length + 1 && DIGIT_STICKS[i].every(s => DIGIT_STICKS[x].includes(s))).map(String),
+        remove: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(x => DIGIT_STICKS[x].length === DIGIT_STICKS[i].length - 1 && DIGIT_STICKS[x].every(s => DIGIT_STICKS[i].includes(s))).map(String),
+        internal: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(x => x !== i && DIGIT_STICKS[x].length === DIGIT_STICKS[i].length && DIGIT_STICKS[i].filter(s => DIGIT_STICKS[x].includes(s)).length === DIGIT_STICKS[i].length - 1).map(String)
+    };
+}
+TRANSFORMS['+'] = { add: [], remove: ['–'], internal: [] };
+TRANSFORMS['–'] = { add: ['+'], remove: [], internal: [] };
+
+const GENERATED_PUZZLES: MCPuzzle[] = [];
+
+(() => {
+    for (let i = 0; i <= 9; i++) {
+        for (let j = 0; j <= 9; j++) {
+            const valid = [];
+            if (i + j <= 9) valid.push({ a: i.toString(), op: '+', b: j.toString(), c: (i + j).toString() });
+            if (i - j >= 0) valid.push({ a: i.toString(), op: '–', b: j.toString(), c: (i - j).toString() });
+
+            for (const eq of valid) {
+                const fixEq = `${eq.a} ${eq.op} ${eq.b} = ${eq.c}`;
+                const parts = [
+                    { key: 'a', val: eq.a, name: 'first number' },
+                    { key: 'op', val: eq.op, name: 'operator' },
+                    { key: 'b', val: eq.b, name: 'second number' },
+                    { key: 'c', val: eq.c, name: 'result' }
+                ];
+
+                const processBroken = (brokenParts: { a: string, op: string, b: string, c: string }, hint: string, explanation: string) => {
+                    const brokenEq = `${brokenParts.a} ${brokenParts.op} ${brokenParts.b} = ${brokenParts.c}`;
+                    const isTrue = brokenParts.op === '+'
+                        ? parseInt(brokenParts.a) + parseInt(brokenParts.b) === parseInt(brokenParts.c)
+                        : parseInt(brokenParts.a) - parseInt(brokenParts.b) === parseInt(brokenParts.c);
+
+                    if (!isTrue) {
+                        const fake1 = `${brokenParts.op === '+' ? parseInt(brokenParts.a) + 1 : Math.max(0, parseInt(brokenParts.a) - 1)} ${brokenParts.op} ${brokenParts.b} = ${brokenParts.c}`;
+                        const fake2 = `${brokenParts.a} ${brokenParts.op} ${brokenParts.op === '+' ? parseInt(brokenParts.b) + 1 : Math.max(0, parseInt(brokenParts.b) - 1)} = ${brokenParts.c}`;
+                        const fake3 = `${brokenParts.a} ${brokenParts.op} ${brokenParts.b} = ${parseInt(brokenParts.c) + 1}`;
+                        const fake4 = `${brokenParts.a} ${brokenParts.op} ${brokenParts.b} = ${Math.max(0, parseInt(brokenParts.c) - 1)}`;
+
+                        const allChoices = Array.from(new Set([fixEq, fake1, fake2, fake3, fake4])).filter(c => c !== brokenEq);
+                        const finalChoices = [fixEq];
+                        for (const c of allChoices) {
+                            if (finalChoices.length < 4 && c !== fixEq) finalChoices.push(c);
+                        }
+                        finalChoices.sort(() => Math.random() - 0.5);
+
+                        GENERATED_PUZZLES.push({ broken: brokenEq, choices: finalChoices, correct: finalChoices.indexOf(fixEq), hint, explanation });
+                    }
+                };
+
+                for (const p of parts) {
+                    for (const internal of TRANSFORMS[p.val].internal) {
+                        processBroken({ ...eq, [p.key]: internal }, `Move a matchstick in the ${p.name}.`, `Turn ${internal} back into ${p.val} by moving one internal stick.`);
+                    }
+                }
+
+                for (let x = 0; x < parts.length; x++) {
+                    for (let y = 0; y < parts.length; y++) {
+                        if (x === y) continue;
+                        const p1 = parts[x];
+                        const p2 = parts[y];
+                        for (const r of TRANSFORMS[p1.val].remove) {
+                            for (const a of TRANSFORMS[p2.val].add) {
+                                processBroken({ ...eq, [p1.key]: r, [p2.key]: a }, `Move a stick from the ${p1.name} to the ${p2.name}.`, `Take a stick from ${r} to make ${p1.val}, and add it to ${a} to make ${p2.val}.`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Seeded shuffle using date slightly ensures consistent ordering per session
+    GENERATED_PUZZLES.sort(() => Math.random() - 0.5);
+})();
 
 export default function MatchstickMath() {
     const navigate = useNavigate();
@@ -49,10 +125,10 @@ export default function MatchstickMath() {
             .then(({ data }) => { setLevel((data?.[0]?.level || 0) + 1); setIsLoading(false); });
     }, [profile]);
 
-    const puzzle = PUZZLES[pidx % PUZZLES.length];
+    const puzzle = GENERATED_PUZZLES[pidx % GENERATED_PUZZLES.length];
 
     const startLevel = (lvl: number) => {
-        setPidx((lvl - 1) % PUZZLES.length);
+        setPidx((lvl - 1) % GENERATED_PUZZLES.length);
         setSelected(null);
         setHintShown(false);
         setScore(0);

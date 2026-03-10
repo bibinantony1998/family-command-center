@@ -6,47 +6,54 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import confetti from 'canvas-confetti';
 
-const PUZZLES = [
-    {
-        groups: [
-            { theme: '🐾 Animals', words: ['LION', 'TIGER', 'BEAR', 'WOLF'], color: 'bg-amber-200 border-amber-400' },
-            { theme: '🌈 Colors', words: ['RED', 'BLUE', 'GREEN', 'PINK'], color: 'bg-blue-200 border-blue-400' },
-            { theme: '🍎 Fruits', words: ['MANGO', 'GRAPE', 'PEACH', 'PLUM'], color: 'bg-green-200 border-green-400' },
-            { theme: '🏠 Rooms', words: ['HALL', 'ATTIC', 'PORCH', 'DEN'], color: 'bg-rose-200 border-rose-400' },
-        ]
-    },
-    {
-        groups: [
-            { theme: '🌍 Countries', words: ['PERU', 'IRAN', 'FIJI', 'MALI'], color: 'bg-amber-200 border-amber-400' },
-            { theme: '🎵 Instruments', words: ['HARP', 'LUTE', 'TUBA', 'OBOE'], color: 'bg-blue-200 border-blue-400' },
-            { theme: '⛅ Weather', words: ['HAIL', 'SMOG', 'MIST', 'SLEET'], color: 'bg-green-200 border-green-400' },
-            { theme: '🔢 Shapes', words: ['CUBE', 'CONE', 'OVAL', 'RHOMBUS'], color: 'bg-rose-200 border-rose-400' },
-        ]
-    },
-    {
-        groups: [
-            { theme: '⚽ Sports', words: ['POLO', 'GOLF', 'JUDO', 'SUMO'], color: 'bg-amber-200 border-amber-400' },
-            { theme: '🌊 Ocean', words: ['REEF', 'WAVE', 'TIDE', 'KELP'], color: 'bg-blue-200 border-blue-400' },
-            { theme: '🍕 Foods', words: ['PITA', 'TOFU', 'BRIE', 'FETA'], color: 'bg-green-200 border-green-400' },
-            { theme: '🎭 Emotions', words: ['RAGE', 'GLEE', 'FEAR', 'ENVY'], color: 'bg-rose-200 border-rose-400' },
-        ]
-    },
-    {
-        groups: [
-            { theme: '🌳 Trees', words: ['OAK', 'ELM', 'ASH', 'YEW'], color: 'bg-amber-200 border-amber-400' },
-            { theme: '💼 Jobs', words: ['CHEF', 'PILOT', 'NURSE', 'JUDGE'], color: 'bg-blue-200 border-blue-400' },
-            { theme: '🎮 Games', words: ['CHESS', 'DARTS', 'BINGO', 'POKER'], color: 'bg-green-200 border-green-400' },
-            { theme: '🌸 Flowers', words: ['ROSE', 'LILY', 'IRIS', 'DAHLIA'], color: 'bg-rose-200 border-rose-400' },
-        ]
-    },
-    {
-        groups: [
-            { theme: '🦋 Insects', words: ['MOTH', 'FLEA', 'WASP', 'GNAT'], color: 'bg-amber-200 border-amber-400' },
-            { theme: '🏔 Landforms', words: ['MESA', 'FJORD', 'DELTA', 'ATOLL'], color: 'bg-blue-200 border-blue-400' },
-            { theme: '🎨 Art Styles', words: ['CUBISM', 'GOTHIC', 'BAROQUE', 'REALISM'], color: 'bg-green-200 border-green-400' },
-            { theme: '🧪 Elements', words: ['IRON', 'GOLD', 'NEON', 'ZINC'], color: 'bg-rose-200 border-rose-400' },
-        ]
-    },
+const CATEGORY_POOL = [
+    { theme: '🐾 Animals', words: ['LION', 'TIGER', 'BEAR', 'WOLF'] },
+    { theme: '🌈 Colors', words: ['RED', 'BLUE', 'GREEN', 'PINK'] },
+    { theme: '🍎 Fruits', words: ['MANGO', 'GRAPE', 'PEACH', 'PLUM'] },
+    { theme: '🏠 Rooms', words: ['HALL', 'ATTIC', 'PORCH', 'DEN'] },
+    { theme: '🌍 Countries', words: ['PERU', 'IRAN', 'FIJI', 'MALI'] },
+    { theme: '🎵 Instruments', words: ['HARP', 'LUTE', 'TUBA', 'OBOE'] },
+    { theme: '⛅ Weather', words: ['HAIL', 'SMOG', 'MIST', 'SLEET'] },
+    { theme: '🔢 Shapes', words: ['CUBE', 'CONE', 'OVAL', 'RHOMBUS'] },
+    { theme: '⚽ Sports', words: ['POLO', 'GOLF', 'JUDO', 'SUMO'] },
+    { theme: '🌊 Ocean', words: ['REEF', 'WAVE', 'TIDE', 'KELP'] },
+    { theme: '🍕 Foods', words: ['PITA', 'TOFU', 'BRIE', 'FETA'] },
+    { theme: '🎭 Emotions', words: ['RAGE', 'GLEE', 'FEAR', 'ENVY'] },
+    { theme: '🌳 Trees', words: ['OAK', 'ELM', 'ASH', 'YEW'] },
+    { theme: '💼 Jobs', words: ['CHEF', 'PILOT', 'NURSE', 'JUDGE'] },
+    { theme: '🎮 Games', words: ['CHESS', 'DARTS', 'BINGO', 'POKER'] },
+    { theme: '🌸 Flowers', words: ['ROSE', 'LILY', 'IRIS', 'DAHLIA'] },
+    { theme: '🦋 Insects', words: ['MOTH', 'FLEA', 'WASP', 'GNAT'] },
+    { theme: '🏔 Landforms', words: ['MESA', 'FJORD', 'DELTA', 'ATOLL'] },
+    { theme: '🎨 Art Styles', words: ['CUBISM', 'GOTHIC', 'BAROQUE', 'REALISM'] },
+    { theme: '🧪 Elements', words: ['IRON', 'GOLD', 'NEON', 'ZINC'] },
+    { theme: '🚗 Vehicles', words: ['CAR', 'TAXI', 'JEEP', 'VAN'] },
+    { theme: '👕 Clothing', words: ['SHIRT', 'PANTS', 'VEST', 'SOCK'] },
+    { theme: '🪐 Planets', words: ['MARS', 'VENUS', 'PLUTO', 'EARTH'] },
+    { theme: '🗡 Weapons', words: ['SWORD', 'SPEAR', 'BOW', 'AXE'] },
+    { theme: '💎 Gems', words: ['RUBY', 'OPAL', 'JADE', 'ONYX'] },
+    { theme: '🪙 Currencies', words: ['EURO', 'PESO', 'BAHT', 'RAND'] },
+    { theme: '☕ Beverages', words: ['TEA', 'MILK', 'SODA', 'WINE'] },
+    { theme: '🪵 Materials', words: ['WOOD', 'SILK', 'CLAY', 'IRON'] },
+    { theme: '🎸 Rock Bands', words: ['QUEEN', 'RUSH', 'KISS', 'ACDC'] },
+    { theme: '🐦 Birds', words: ['HAWK', 'DOVE', 'CROW', 'SWAN'] },
+    { theme: '🔧 Tools', words: ['SAW', 'FILE', 'VICE', 'AWL'] },
+    { theme: '📚 Book Genres', words: ['SCI-FI', 'FANTASY', 'MYSTERY', 'HORROR'] },
+    { theme: '🏰 Buildings', words: ['HUT', 'FORT', 'BARN', 'TENT'] },
+    { theme: '🧭 Directions', words: ['NORTH', 'SOUTH', 'EAST', 'WEST'] },
+    { theme: '🧊 States of Matter', words: ['SOLID', 'LIQUID', 'GAS', 'PLASMA'] },
+    { theme: '🧀 Cheeses', words: ['BRIE', 'EDAM', 'GOUDA', 'SWISS'] },
+    { theme: '🍝 Pasta', words: ['ZITI', 'ORZO', 'PENNE', 'MACARONI'] },
+    { theme: '👟 Shoes', words: ['BOOT', 'CLOG', 'PUMP', 'FLAT'] },
+    { theme: '🤠 Wild West', words: ['LASSO', 'SPUR', 'CHAPS', 'RANCH'] },
+    { theme: '📱 Apps', words: ['TIKTOK', 'X', 'UBER', 'MAPS'] }
+];
+
+const COLORS = [
+    'bg-amber-200 border-amber-400',
+    'bg-blue-200 border-blue-400',
+    'bg-green-200 border-green-400',
+    'bg-rose-200 border-rose-400',
 ];
 
 function shuffle<T>(arr: T[]): T[] { return [...arr].sort(() => Math.random() - 0.5); }
@@ -56,7 +63,7 @@ export default function WordConnections() {
     const { profile } = useAuth();
     const [level, setLevel] = useState(1);
     const [gameState, setGameState] = useState<'intro' | 'playing' | 'won' | 'lost'>('intro');
-    const [puzzle, setPuzzle] = useState(PUZZLES[0]);
+    const [puzzle, setPuzzle] = useState({ groups: CATEGORY_POOL.slice(0, 4).map((c, i) => ({ ...c, color: COLORS[i] })) });
     const [tiles, setTiles] = useState<string[]>([]);
     const [selected, setSelected] = useState<string[]>([]);
     const [solved, setSolved] = useState<number[]>([]);
@@ -71,8 +78,9 @@ export default function WordConnections() {
             .then(({ data }) => { setLevel((data?.[0]?.level || 0) + 1); setIsLoading(false); });
     }, [profile]);
 
-    const startLevel = (lvl: number) => {
-        const puz = PUZZLES[(lvl - 1) % PUZZLES.length];
+    const startLevel = () => {
+        const selected = shuffle(CATEGORY_POOL).slice(0, 4);
+        const puz = { groups: selected.map((c, i) => ({ ...c, color: COLORS[i] })) };
         setPuzzle(puz); setTiles(shuffle(puz.groups.flatMap(g => g.words)));
         setSelected([]); setSolved([]); setMistakes(0); setGameState('playing');
     };
@@ -112,7 +120,7 @@ export default function WordConnections() {
                         <p>• Click Submit to check your group</p>
                         <p>• {MAX_MISTAKES} mistakes allowed</p>
                     </div>
-                    <Button onClick={() => startLevel(level)} disabled={isLoading} className="w-full h-12 text-lg">
+                    <Button onClick={() => startLevel()} disabled={isLoading} className="w-full h-12 text-lg">
                         {isLoading ? 'Loading...' : `Start Level ${level}`}
                     </Button>
                     <button onClick={() => navigate('/games')} className="text-slate-400 text-sm">Back</button>
@@ -155,7 +163,7 @@ export default function WordConnections() {
                     <div className="text-6xl">{gameState === 'won' ? '🏆' : '😓'}</div>
                     <h2 className="text-3xl font-bold text-slate-800">{gameState === 'won' ? 'Connected!' : 'Too Many Mistakes!'}</h2>
                     {gameState === 'won' && <p className="text-indigo-600 font-bold text-xl">+{(MAX_MISTAKES - mistakes + 1) * level * 3} Points</p>}
-                    <Button onClick={() => { const n = level + (gameState === 'won' ? 1 : 0); setLevel(n); startLevel(n); }} className="w-full h-12">
+                    <Button onClick={() => { const n = level + (gameState === 'won' ? 1 : 0); setLevel(n); startLevel(); }} className="w-full h-12">
                         {gameState === 'won' ? 'Next Puzzle' : 'Try Again'}
                     </Button>
                     <button onClick={() => navigate('/games')} className="text-slate-400 text-sm">Back to Games</button>

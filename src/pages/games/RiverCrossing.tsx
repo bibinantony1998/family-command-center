@@ -17,56 +17,102 @@ interface Puzzle {
     boatCapacity: number; // max items the farmer can take (not counting farmer)
 }
 
-const PUZZLES: Puzzle[] = [
-    {
-        title: 'Farmer, Fox, Chicken & Grain',
-        items: [
-            { id: 'fox', emoji: '🦊', label: 'Fox' },
-            { id: 'chicken', emoji: '🐔', label: 'Chicken' },
-            { id: 'grain', emoji: '🌾', label: 'Grain' },
-        ],
-        isIllegal: (side) =>
-            (side.includes('fox') && side.includes('chicken')) ||
-            (side.includes('chicken') && side.includes('grain')),
-        hint: 'Fox eats chicken; chicken eats grain — never leave a dangerous pair alone!',
-        minMoves: 7,
-        boatCapacity: 1, // classic rule: farmer + 1 only
-    },
-    {
-        title: 'Missionaries & Cannibals',
-        items: [
-            { id: 'm1', emoji: '🙏', label: 'Miss 1' },
-            { id: 'm2', emoji: '🙏', label: 'Miss 2' },
-            { id: 'm3', emoji: '🙏', label: 'Miss 3' },
-            { id: 'c1', emoji: '😈', label: 'Cann 1' },
-            { id: 'c2', emoji: '😈', label: 'Cann 2' },
-            { id: 'c3', emoji: '😈', label: 'Cann 3' },
-        ],
-        isIllegal: (side) => {
-            const m = side.filter(x => x.startsWith('m')).length;
-            const c = side.filter(x => x.startsWith('c')).length;
-            return m > 0 && c > m;
-        },
-        hint: 'Cannibals must never outnumber missionaries on either side of the river.',
-        minMoves: 11,
-        boatCapacity: 2,
-    },
-    {
-        title: 'Jealous Husbands',
-        items: [
-            { id: 'h1', emoji: '👨', label: 'Husband A' },
-            { id: 'w1', emoji: '👩', label: 'Wife A' },
-            { id: 'h2', emoji: '🧔', label: 'Husband B' },
-            { id: 'w2', emoji: '💁', label: 'Wife B' },
-        ],
-        isIllegal: (side) =>
-            (side.includes('w1') && side.includes('h2') && !side.includes('h1')) ||
-            (side.includes('w2') && side.includes('h1') && !side.includes('h2')),
-        hint: 'No wife can be alone with another husband without her own husband present.',
-        minMoves: 5,
-        boatCapacity: 2,
-    },
-];
+const getPuzzleForLevel = (level: number): Puzzle => {
+    const cycle = (level - 1) % 3; // 0 = Food Chain, 1 = Outnumber, 2 = Protect
+    const difficultyGroup = Math.floor((level - 1) / 3);
+
+    if (cycle === 0) {
+        // Food Chain
+        const N = Math.min(7, 3 + difficultyGroup);
+        const CHAINS = [
+            [], [], [], // N=0,1,2 n/a
+            [{ e: '🦊', n: 'Fox' }, { e: '🐔', n: 'Chicken' }, { e: '🌾', n: 'Grain' }], // N=3
+            [{ e: '🦅', n: 'Hawk' }, { e: '🐍', n: 'Snake' }, { e: '🐭', n: 'Mouse' }, { e: '🧀', n: 'Cheese' }], // N=4
+            [{ e: '🐻', n: 'Bear' }, { e: '🐺', n: 'Wolf' }, { e: '🐶', n: 'Dog' }, { e: '🐱', n: 'Cat' }, { e: '🐭', n: 'Mouse' }], // N=5
+            [{ e: '🦖', n: 'T-Rex' }, { e: '🐊', n: 'Croc' }, { e: '🦅', n: 'Eagle' }, { e: '🐍', n: 'Snake' }, { e: '🐸', n: 'Frog' }, { e: '🪰', n: 'Fly' }], // N=6
+            [{ e: '🐉', n: 'Dragon' }, { e: '🦖', n: 'Rex' }, { e: '🦍', n: 'Kong' }, { e: '🐻', n: 'Bear' }, { e: '🐺', n: 'Wolf' }, { e: '🐑', n: 'Sheep' }, { e: '🌾', n: 'Grain' }] // N=7
+        ];
+        const chain = CHAINS[N];
+
+        const items = chain.map((it, i) => ({ id: `i${i}`, emoji: it.e, label: it.n }));
+        const cap = Math.floor(N / 2);
+
+        return {
+            title: `Food Chain (${N} items)`,
+            items,
+            isIllegal: (side) => {
+                const indices = side.map(id => parseInt(id.substring(1))).sort((a, b) => a - b);
+                for (let i = 0; i < indices.length - 1; i++) {
+                    if (indices[i + 1] === indices[i] + 1) return true; // Adjacent found!
+                }
+                return false;
+            },
+            hint: `Each item will eat the one directly below it in the chain. Separating them is key!`,
+            minMoves: N * 3,
+            boatCapacity: cap,
+        }
+    } else if (cycle === 1) {
+        // Outnumber Factions
+        const N = 3 + difficultyGroup;
+        const THEMES = [
+            { a: { e: '😇', n: 'Human' }, b: { e: '🧛', n: 'Vamp' } },
+            { a: { e: '🧑‍🚀', n: 'Astro' }, b: { e: '👽', n: 'Alien' } },
+            { a: { e: '🧙', n: 'Wiz' }, b: { e: '👹', n: 'Orc' } },
+            { a: { e: '🐶', n: 'Dog' }, b: { e: '🐱', n: 'Cat' } },
+            { a: { e: '🦸', n: 'Hero' }, b: { e: '🦹', n: 'Vill' } },
+            { a: { e: '🧝', n: 'Elf' }, b: { e: '👺', n: 'Gob' } },
+        ];
+        const theme = THEMES[difficultyGroup % THEMES.length];
+
+        const items = [];
+        for (let i = 1; i <= N; i++) {
+            items.push({ id: `a${i}`, emoji: theme.a.e, label: `${theme.a.n} ${i}` });
+            items.push({ id: `b${i}`, emoji: theme.b.e, label: `${theme.b.n} ${i}` });
+        }
+        return {
+            title: `${N} ${theme.a.n}s & ${theme.b.n}s`,
+            items,
+            isIllegal: (side) => {
+                const aCount = side.filter(x => x.startsWith('a')).length;
+                const bCount = side.filter(x => x.startsWith('b')).length;
+                return aCount > 0 && bCount > aCount; // B cannot outnumber A if A is present
+            },
+            hint: `The ${theme.b.n}s (${theme.b.e}) must never outnumber the ${theme.a.n}s (${theme.a.e}) on either side!`,
+            minMoves: N * 4 - 1,
+            boatCapacity: Math.max(2, N - 1),
+        };
+    } else {
+        // Protect
+        const N = 3 + difficultyGroup;
+        const THEMES = [
+            { p: { e: '👨', n: 'Hus' }, c: { e: '👩', n: 'Wife' } },
+            { p: { e: '🛡️', n: 'Kni' }, c: { e: '👑', n: 'Reg' } },
+            { p: { e: '🐕', n: 'Dog' }, c: { e: '🐑', n: 'Shp' } },
+            { p: { e: '🐧', n: 'Pen' }, c: { e: '🥚', n: 'Egg' } },
+            { p: { e: '🦖', n: 'Rex' }, c: { e: '👶', n: 'Bby' } },
+            { p: { e: '🦅', n: 'Eag' }, c: { e: '🐥', n: 'Chk' } },
+        ];
+        const theme = THEMES[difficultyGroup % THEMES.length];
+
+        const items = [];
+        for (let i = 1; i <= N; i++) {
+            items.push({ id: `p${i}`, emoji: theme.p.e, label: `${theme.p.n} ${i}` });
+            items.push({ id: `c${i}`, emoji: theme.c.e, label: `${theme.c.n} ${i}` });
+        }
+        return {
+            title: `${N} Protectors & Wards`,
+            items,
+            isIllegal: (side) => {
+                const protectors = side.filter(x => x.startsWith('p')).map(x => x.substring(1));
+                const wards = side.filter(x => x.startsWith('c')).map(x => x.substring(1));
+                return wards.some(w => !protectors.includes(w)) && protectors.length > 0;
+            },
+            hint: `A ${theme.c.n} (${theme.c.e}) cannot be with another ${theme.p.n} (${theme.p.e}) unless their own ${theme.p.n} is present.`,
+            minMoves: N * 4 - 3,
+            boatCapacity: Math.max(2, N - 1),
+        };
+    }
+};
 
 type Side = 'left' | 'right';
 
@@ -75,7 +121,7 @@ export default function RiverCrossing() {
     const { profile } = useAuth();
     const [level, setLevel] = useState(1);
     const [gameState, setGameState] = useState<'intro' | 'playing' | 'won' | 'lost'>('intro');
-    const [puzzle, setPuzzle] = useState<Puzzle>(PUZZLES[0]);
+    const [puzzle, setPuzzle] = useState<Puzzle>(getPuzzleForLevel(1));
     const [left, setLeft] = useState<string[]>([]);
     const [right, setRight] = useState<string[]>([]);
     const [boatSide, setBoatSide] = useState<Side>('left');
@@ -91,7 +137,7 @@ export default function RiverCrossing() {
     }, [profile]);
 
     const startLevel = (lvl: number) => {
-        const p = PUZZLES[(lvl - 1) % PUZZLES.length];
+        const p = getPuzzleForLevel(lvl);
         setPuzzle(p);
         setLeft(p.items.map(i => i.id));
         setRight([]);
