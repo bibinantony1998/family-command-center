@@ -83,7 +83,7 @@ android {
         applicationId "com.familycommandcenter"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 30
+        versionCode 40
         versionName "2.3"
     }
     buildFeatures {
@@ -161,6 +161,72 @@ tasks.whenTaskAdded { task ->
             if (srcFile.exists()) {
                 srcFile.renameTo(destFile)
                 println "AAB renamed to: ${destFile.name}"
+            }
+        }
+    }
+}
+
+// ── 16KB ELF alignment patch ──────────────────────────────────────────────────
+// Patches ELF p_align to 16384 in the UNSIGNED bundle before signReleaseBundle
+// runs, so the final signed AAB satisfies Google Play's 16KB requirement.
+tasks.whenTaskAdded { task ->
+    if (task.name == 'packageReleaseBundle') {
+        task.doLast {
+            def aabFile = file("${buildDir}/intermediates/intermediary_bundle/release/packageReleaseBundle/intermediary-bundle.aab")
+            if (!aabFile.exists()) {
+                println "16KB patch: unsigned AAB not found, skipping."
+                return
+            }
+
+            def patchPy = """
+import sys, os, struct, zipfile, shutil, tempfile
+
+def patch_elf_align(data):
+    if data[:4] != b'\\x7fELF': return data
+    d = bytearray(data)
+    ei_class, ei_end = d[4], d[5]
+    endian = '<' if ei_end == 1 else '>'
+    if ei_class == 1:  # 32-bit
+        phoff, = struct.unpack_from(endian+'I', d, 28)
+        phentsize, = struct.unpack_from(endian+'H', d, 42)
+        phnum, = struct.unpack_from(endian+'H', d, 44)
+        align_off, align_fmt = 28, endian+'I'
+    else:  # 64-bit
+        phoff, = struct.unpack_from(endian+'Q', d, 32)
+        phentsize, = struct.unpack_from(endian+'H', d, 54)
+        phnum, = struct.unpack_from(endian+'H', d, 56)
+        align_off, align_fmt = 48, endian+'Q'
+    for i in range(phnum):
+        base = phoff + i * phentsize
+        ptype, = struct.unpack_from(endian+'I', d, base)
+        if ptype == 1:  # PT_LOAD
+            apos = base + align_off
+            cur, = struct.unpack_from(align_fmt, d, apos)
+            if cur < 0x4000:
+                struct.pack_into(align_fmt, d, apos, 0x4000)
+    return bytes(d)
+
+aab = sys.argv[1]
+tmp = aab + '.tmp'
+with zipfile.ZipFile(aab, 'r') as zin, zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zout:
+    for info in zin.infolist():
+        data = zin.read(info.filename)
+        if info.filename.endswith('.so'):
+            data = patch_elf_align(data)
+        zout.writestr(info, data)
+os.replace(tmp, aab)
+print('16KB patch applied to: ' + aab)
+"""
+            def scriptFile = File.createTempFile("patch16kb", ".py")
+            scriptFile.text = patchPy
+            try {
+                exec {
+                    commandLine "python3", scriptFile.absolutePath, aabFile.absolutePath
+                    standardOutput = System.out
+                    errorOutput = System.err
+                }
+            } finally {
+                scriptFile.delete()
             }
         }
     }
