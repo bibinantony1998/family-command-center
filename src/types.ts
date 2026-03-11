@@ -7,6 +7,7 @@ export interface Profile {
     avatar_url: string | null;
     family_id: string | null; // uuid
     current_family_id?: string | null; // uuid
+    date_of_birth?: string | null; // YYYY-MM-DD
     created_at: string;
 }
 
@@ -103,4 +104,41 @@ export interface UserDevice {
     public_key: string;
     created_at: string;
     last_active: string;
+}
+
+export interface Asset {
+    id: string; // uuid
+    family_id: string; // uuid
+    type: 'vehicle' | 'property' | 'other';
+    details: Record<string, unknown>; // jsonb
+    added_by: string; // uuid
+    created_at: string;
+}
+
+export interface InsurancePolicy {
+    id: string; // uuid
+    family_id: string; // uuid
+    target_id: string | null; // uuid
+    type: 'health' | 'life' | 'vehicle' | 'property' | 'medical';
+    provider: string;
+    premium_amount: number;
+    coverage_amount: number | null;
+    expiry_date: string; // date
+    next_due_date: string | null; // date
+    created_at: string;
+}
+
+export interface Bill {
+    id: string; // uuid
+    family_id: string; // uuid
+    category: 'electricity' | 'water' | 'gas' | 'broadband' | 'dth' | 'mobile_postpaid' | 'landline' | 'education_fees' | 'credit_card' | 'property_tax' | 'municipal_tax' | 'subscription' | 'other';
+    provider_name: string;
+    consumer_number: string;
+    due_date: string | null; // date
+    amount: number;
+    status: 'pending' | 'paid' | 'overdue';
+    auto_pay: boolean;
+    visibility: 'personal' | 'public';
+    added_by: string; // uuid
+    created_at: string;
 }
