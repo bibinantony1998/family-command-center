@@ -132,23 +132,23 @@ export default function BillsDashboard() {
             {/* Services Hub Grid */}
             <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm mb-8">
                 <h2 className="text-lg font-bold text-slate-800 mb-4">Payment Categories</h2>
-                <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
+                <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
                     {[
-                        { id: 'electricity', label: 'Electricity', icon: <Zap className="w-6 h-6 text-yellow-500" /> },
-                        { id: 'water', label: 'Water', icon: <Droplet className="w-6 h-6 text-blue-500" /> },
-                        { id: 'gas', label: 'Gas', icon: <Flame className="w-6 h-6 text-orange-500" /> },
-                        { id: 'broadband', label: 'Broadband', icon: <Wifi className="w-6 h-6 text-indigo-500" /> },
-                        { id: 'dth', label: 'DTH', icon: <Tv className="w-6 h-6 text-purple-500" /> },
-                        { id: 'mobile_postpaid', label: 'Mobile', icon: <Smartphone className="w-6 h-6 text-emerald-500" /> },
-                        { id: 'credit_card', label: 'Credit Card', icon: <CreditCard className="w-6 h-6 text-red-500" /> },
-                        { id: 'insurance', label: 'Insurance', icon: <Shield className="w-6 h-6 text-teal-600" /> },
+                        { id: 'electricity', label: 'Electricity', icon: <Zap className="w-5 h-5 text-yellow-500" /> },
+                        { id: 'water', label: 'Water', icon: <Droplet className="w-5 h-5 text-blue-500" /> },
+                        { id: 'gas', label: 'Gas', icon: <Flame className="w-5 h-5 text-orange-500" /> },
+                        { id: 'broadband', label: 'Broadband', icon: <Wifi className="w-5 h-5 text-indigo-500" /> },
+                        { id: 'dth', label: 'DTH', icon: <Tv className="w-5 h-5 text-purple-500" /> },
+                        { id: 'mobile_postpaid', label: 'Mobile', icon: <Smartphone className="w-5 h-5 text-emerald-500" /> },
+                        { id: 'credit_card', label: 'Credit Card', icon: <CreditCard className="w-5 h-5 text-red-500" /> },
+                        { id: 'insurance', label: 'Insurance', icon: <Shield className="w-5 h-5 text-teal-600" /> },
                     ].map((service) => (
                         <button
                             key={service.id}
                             onClick={() => service.id === 'insurance' ? navigate('/insurance') : navigate(`/bills/add?category=${service.id}`)}
-                            className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 active:bg-slate-100 transition-colors group"
+                            className="flex flex-col items-center justify-center px-2 py-3 rounded-xl hover:bg-slate-50 active:bg-slate-100 transition-colors group cursor-pointer"
                         >
-                            <div className="w-12 h-12 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center mb-2 group-hover:scale-110 group-hover:shadow-sm transition-all">
+                            <div className="w-11 h-11 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center mb-2 group-hover:shadow-sm transition-all">
                                 {service.icon}
                             </div>
                             <span className="text-xs font-medium text-slate-700 text-center leading-tight">

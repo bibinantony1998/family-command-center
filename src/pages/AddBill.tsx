@@ -32,24 +32,78 @@ export default function AddBill() {
         return '';
     }, [initialCategory]);
 
+    // Per-biller consumer ID configuration
+    const CONSUMER_ID_CONFIG: Record<string, { label: string; placeholder: string; hint: string }> = {
+        // Electricity — most use "Consumer Number"
+        'BESCOM': { label: 'Consumer Number', placeholder: 'e.g. 4001234567', hint: 'Found on your BESCOM bill top-right' },
+        'MSEDCL': { label: 'Consumer Number', placeholder: 'e.g. 1234567890', hint: 'Found on top of your MSEDCL bill' },
+        'KSEB': { label: 'Consumer Number', placeholder: 'e.g. 2001234567', hint: 'On your KSEB bill, starts with 2' },
+        'KSEBL': { label: 'Consumer Number', placeholder: 'e.g. 2001234567', hint: 'On your KSEBL bill, starts with 2' },
+        'TPDDL': { label: 'CA Number', placeholder: 'e.g. 302XXXXXXX', hint: '11-digit CA Number on your bill' },
+        'BRPL': { label: 'Consumer Account No.', placeholder: 'e.g. 3100XXXXXX', hint: 'On your BSES Rajdhani bill' },
+        'BYPL': { label: 'Consumer Account No.', placeholder: 'e.g. 6100XXXXXX', hint: 'On your BSES Yamuna bill' },
+        'TANGEDCO': { label: 'Service Connection Number', placeholder: 'e.g. 069000000000', hint: 'SC No. on your TANGEDCO bill' },
+        'APEPDCL': { label: 'Service Number', placeholder: 'e.g. 1234567890', hint: 'Service No. on your AP bill' },
+        'APCPDCL': { label: 'Service Number', placeholder: 'e.g. 1234567890', hint: 'Service No. on your AP bill' },
+        'APSPDCL': { label: 'Service Number', placeholder: 'e.g. 1234567890', hint: 'Service No. on your AP bill' },
+        'TSNPDCL': { label: 'Consumer Number (SC No.)', placeholder: 'e.g. 123456789012', hint: 'SC No. found on Telangana bill' },
+        'TSSPDCL': { label: 'Consumer Number (SC No.)', placeholder: 'e.g. 123456789012', hint: 'SC No. found on Telangana bill' },
+        'UPPCL': { label: 'Account Number', placeholder: 'e.g. 12-digit account no.', hint: 'Consumer Account No. on UP bill' },
+        'PSPCL': { label: 'Account ID', placeholder: 'e.g. 3214567890', hint: '10-digit Account ID on Punjab bill' },
+        'JVVNL': { label: 'K. Number', placeholder: 'e.g. K-1234567890', hint: 'K. Number on your Jaipur bill' },
+        'WBSEDCL': { label: 'Consumer ID', placeholder: 'e.g. 901XXXXXXX', hint: '10-digit Consumer ID on WB bill' },
+        // Gas — LPG
+        'HPGAS': { label: 'LPG Consumer ID / Reg. No.', placeholder: 'e.g. 12-digit ID', hint: 'Found on your HP Gas booklet or app' },
+        'BHARATGAS': { label: 'Consumer No. / CA Number', placeholder: 'e.g. 10-digit number', hint: 'CA No. on your Bharat Gas card' },
+        'INDANE': { label: 'Consumer Number', placeholder: 'e.g. 9-digit number', hint: 'Consumer No. on your Indane card' },
+        // Gas — PNG/CNG
+        'IGL': { label: 'BP Number', placeholder: 'e.g. 10-digit BP No.', hint: 'BP No. on your IGL bill/app' },
+        'MGL': { label: 'Consumer Number', placeholder: 'e.g. 10-digit number', hint: 'Consumer No. on your MGL bill' },
+        'GGL': { label: 'Consumer No.', placeholder: 'e.g. 9-digit number', hint: 'On your Gujarat Gas bill' },
+        'ADANI_TOTAL_GAS': { label: 'Consumer No.', placeholder: 'e.g. 10-digit number', hint: 'On your Adani Gas bill' },
+        'MNGL': { label: 'Consumer Number', placeholder: 'e.g. 9-digit number', hint: 'Consumer No. on your MNGL bill' },
+        // Water
+        'BWSSB': { label: 'Service Connection No.', placeholder: 'e.g. 10000XXXXX', hint: 'SCN on your BWSSB bill' },
+        'DJB': { label: 'Consumer No. (K No.)', placeholder: 'e.g. KX-XXXXXXXX', hint: 'K. No. on your Delhi Jal Board bill' },
+        'MCGM_WATER': { label: 'Consumer ID', placeholder: 'e.g. 12-digit ID', hint: 'Consumer ID on your MCGM water bill' },
+        'CMWSSB': { label: 'Consumer No.', placeholder: 'e.g. 10-digit number', hint: 'On your Chennai Metro Water bill' },
+        'HMWS_SB': { label: 'Consumer No.', placeholder: 'e.g. 10-digit number', hint: 'On your Hyderabad water bill' },
+        // Broadband
+        'AIRTEL_BB': { label: 'Account ID / Mobile No.', placeholder: 'e.g. 10-digit mobile', hint: 'Registered mobile or Account ID' },
+        'JIO_FIBER': { label: 'Account Number', placeholder: 'e.g. JF-XXXXXXXXX', hint: 'Account No. in Jio app → My Account' },
+        'BSNL_BB': { label: 'Landline / Account No.', placeholder: 'e.g. 044-XXXXXXXX', hint: 'BSNL landline or account number' },
+        'ACT_BB': { label: 'Account ID', placeholder: 'e.g. 1000XXXXXXX', hint: 'Account ID from ACT app/welcome mail' },
+        'HATHWAY': { label: 'Consumer ID', placeholder: 'e.g. 8-10 digit ID', hint: 'Consumer ID on Hathway invoice' },
+        'TATA_PLAY_BB': { label: 'Account ID', placeholder: 'e.g. 8-digit ID', hint: 'Account ID from Tata Play welcome mail' },
+        // Mobile Postpaid
+        'AIRTEL_POST': { label: 'Mobile Number', placeholder: 'e.g. 9876543210', hint: 'Your 10-digit Airtel postpaid number' },
+        'JIO_POST': { label: 'Mobile Number', placeholder: 'e.g. 9876543210', hint: 'Your 10-digit Jio postpaid number' },
+        'VI_POST': { label: 'Mobile Number', placeholder: 'e.g. 9876543210', hint: 'Your 10-digit Vi postpaid number' },
+        'BSNL_POST': { label: 'Mobile Number', placeholder: 'e.g. 9876543210', hint: 'Your 10-digit BSNL postpaid number' },
+        // DTH
+        'TATA_PLAY': { label: 'Subscriber ID', placeholder: 'e.g. 1XXXXXXXXX', hint: '9-10 digit Subscriber ID on Tata Play card' },
+        'DISH_TV': { label: 'VC Number', placeholder: 'e.g. 12-digit VC No.', hint: 'VC No. on your Dish TV viewing card' },
+        'AIRTEL_DTH': { label: 'Customer ID', placeholder: 'e.g. 3XXXXXXXXX', hint: 'Customer ID on your Airtel DTH card' },
+        'SUN_DTH': { label: 'Subscriber ID', placeholder: 'e.g. 10-digit ID', hint: 'Subscriber ID on Sun Direct card' },
+        'VIDEOCON_DTH': { label: 'VC Number', placeholder: 'e.g. 12-digit VC No.', hint: 'VC No. on your D2H viewing card' },
+    };
+
+
+
     // Available Billers for this category
     const availableBillers = React.useMemo(() => {
         if (!targetCat) return MOCK_BILLERS; // Show all if no category specific
         return MOCK_BILLERS.filter(b => b.biller_category === targetCat);
     }, [targetCat]);
 
-    // Auto-select provider based on available list
-    const initialBiller = React.useMemo(() => {
-        if (availableBillers.length > 0 && targetCat) {
-            return availableBillers[0].biller_id;
-        }
-        return '';
-    }, [availableBillers, targetCat]);
-
-    // Form State
-    const [selectedBiller, setSelectedBiller] = useState<string>(initialBiller);
+    // Form State — no default selection, user must choose
+    const [selectedBiller, setSelectedBiller] = useState<string>('');
     const [consumerNumber, setConsumerNumber] = useState('');
     const [isFetching, setIsFetching] = useState(false);
+
+    const billerConfig = selectedBiller
+        ? (CONSUMER_ID_CONFIG[selectedBiller] ?? { label: 'Consumer Number / Account ID', placeholder: 'e.g. 1234567890', hint: 'Find this on your bill or provider app' })
+        : { label: 'Consumer Number / Account ID', placeholder: 'e.g. 1234567890', hint: 'Select a provider first' };
 
     // Fetched Bill State
     const [fetchedBill, setFetchedBill] = useState<MockBillResponse | null>(null);
@@ -138,15 +192,21 @@ export default function AddBill() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-2">Consumer Number / Account ID</label>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">{billerConfig.label}</label>
                                 <input
                                     type="text"
                                     required
                                     value={consumerNumber}
                                     onChange={e => setConsumerNumber(e.target.value)}
-                                    placeholder="e.g. 1102938475"
-                                    className="w-full px-4 py-3.5 bg-white border border-slate-200 rounded-xl focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 text-slate-800 font-medium shadow-sm transition-all"
+                                    placeholder={billerConfig.placeholder}
+                                    disabled={!selectedBiller}
+                                    className="w-full px-4 py-3.5 bg-white border border-slate-200 rounded-xl focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 text-slate-800 font-medium shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                                 />
+                                {selectedBiller && (
+                                    <p className="text-xs text-slate-400 mt-1.5 flex items-center gap-1">
+                                        <Info className="w-3 h-3" />{billerConfig.hint}
+                                    </p>
+                                )}
                             </div>
                         </div>
 

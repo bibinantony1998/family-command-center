@@ -3,17 +3,32 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchInsurancePolicies } from '../lib/api/assets';
 import type { InsurancePolicy } from '../types';
-import { Shield, ShieldAlert, ShieldCheck, Plus, HeartPulse, Heart, Car, Home } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, Plus, HeartPulse, Heart, Car, Home, Stethoscope, AlertTriangle } from 'lucide-react';
 
-/*
 const INSURANCE_ICONS: Record<string, React.ReactNode> = {
-    health: <HeartPulse className="w-5 h-5 text-rose-500" />,
-    life: <Heart className="w-5 h-5 text-red-500" />,
-    vehicle: <Car className="w-5 h-5 text-blue-500" />,
-    property: <Home className="w-5 h-5 text-indigo-500" />,
-    medical: <Stethoscope className="w-5 h-5 text-teal-500" />,
+    health: <HeartPulse className="w-6 h-6 text-rose-500" />,
+    life: <Heart className="w-6 h-6 text-red-500" />,
+    vehicle: <Car className="w-6 h-6 text-blue-500" />,
+    property: <Home className="w-6 h-6 text-indigo-500" />,
+    medical: <Stethoscope className="w-6 h-6 text-teal-500" />,
 };
-*/
+
+const INSURANCE_COLORS: Record<string, string> = {
+    health: 'bg-rose-50',
+    life: 'bg-red-50',
+    vehicle: 'bg-blue-50',
+    property: 'bg-indigo-50',
+    medical: 'bg-teal-50',
+};
+
+function getPolicyStatus(expiry: string): 'active' | 'expiring' | 'expired' {
+    const today = new Date();
+    const exp = new Date(expiry);
+    const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return 'expired';
+    if (diffDays <= 30) return 'expiring';
+    return 'active';
+}
 
 export default function Insurance() {
     const navigate = useNavigate();
@@ -57,6 +72,13 @@ export default function Insurance() {
                     <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Health & Insurance</h1>
                     <p className="text-slate-500 mt-1">Manage family health, life, and asset insurance policies</p>
                 </div>
+                <button
+                    onClick={() => navigate('/insurance/add')}
+                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium transition-all shadow-sm"
+                >
+                    <Plus className="w-5 h-5" />
+                    <span>Add Policy</span>
+                </button>
             </div>
 
             {/* Insurance Categories Grid */}
@@ -117,8 +139,54 @@ export default function Insurance() {
                     </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {/* Policy list will go here */}
+                <div>
+                    <h2 className="text-lg font-bold text-slate-800 mb-4">Your Policies</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                        {policies.map(policy => {
+                            const status = getPolicyStatus(policy.expiry_date);
+                            return (
+                                <div key={policy.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:shadow-md transition-shadow">
+                                    <div className="flex items-start justify-between mb-4">
+                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${INSURANCE_COLORS[policy.type] ?? 'bg-slate-50'}`}>
+                                            {INSURANCE_ICONS[policy.type] ?? <Shield className="w-6 h-6 text-slate-400" />}
+                                        </div>
+                                        <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${status === 'active' ? 'bg-green-100 text-green-700' :
+                                            status === 'expiring' ? 'bg-amber-100 text-amber-700' :
+                                                'bg-red-100 text-red-700'
+                                            }`}>
+                                            {status === 'active' ? '✓ Active' : status === 'expiring' ? '⚠ Expiring Soon' : '✕ Expired'}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider capitalize mb-0.5">{policy.type} Insurance</p>
+                                    <h3 className="font-bold text-slate-900 text-base leading-tight mb-3">{policy.provider}</h3>
+                                    <div className="space-y-2 border-t border-slate-50 pt-3">
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-slate-500">Annual Premium</span>
+                                            <span className="font-semibold text-slate-800">₹{policy.premium_amount.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        {policy.coverage_amount && (
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-slate-500">Coverage</span>
+                                                <span className="font-semibold text-slate-800">₹{policy.coverage_amount.toLocaleString('en-IN')}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-slate-500">Expires</span>
+                                            <span className={`font-semibold ${status === 'expired' ? 'text-red-600' : status === 'expiring' ? 'text-amber-600' : 'text-slate-800'}`}>
+                                                {new Date(policy.expiry_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {status === 'expiring' && (
+                                        <div className="mt-3 flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                            Renew before expiry to avoid coverage gap
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
         </div>

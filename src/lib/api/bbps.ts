@@ -12,14 +12,143 @@ export interface MockBillResponse {
     status: 'GENERATED' | 'PAID';
 }
 
-// Mocked List of Billers (would normally come from BBPS /biller API)
+// Comprehensive Indian BBPS Biller List — sourced from public DISCOM / BBPS data (2024)
+// Categories: Electricity, Gas, Water, Broadband, Mobile Postpaid, DTH
 export const MOCK_BILLERS: BillerInfo[] = [
-    { biller_id: 'KSEB001', biller_name: 'Kerala State Electricity Board (KSEB)', biller_category: 'Electricity' },
-    { biller_id: 'BESC001', biller_name: 'BESCOM - Bengaluru', biller_category: 'Electricity' },
-    { biller_id: 'ADAN001', biller_name: 'Adani Electricity Mumbai Limited', biller_category: 'Electricity' },
-    { biller_id: 'BWSS001', biller_name: 'BWSSB (Water)', biller_category: 'Water' },
-    { biller_id: 'JIO001', biller_name: 'Jio Postpaid', biller_category: 'Mobile Postpaid' },
-    { biller_id: 'AIRT001', biller_name: 'Airtel Broadband', biller_category: 'Broadband' },
+    // ───── ELECTRICITY — Andhra Pradesh ─────
+    { biller_id: 'APEPDCL', biller_name: 'APEPDCL (AP Eastern)', biller_category: 'Electricity' },
+    { biller_id: 'APCPDCL', biller_name: 'APCPDCL (AP Central)', biller_category: 'Electricity' },
+    { biller_id: 'APSPDCL', biller_name: 'APSPDCL (AP Southern)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Assam ─────
+    { biller_id: 'APDCL', biller_name: 'APDCL (Assam)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Bihar ─────
+    { biller_id: 'NBPDCL', biller_name: 'NBPDCL (North Bihar)', biller_category: 'Electricity' },
+    { biller_id: 'SBPDCL', biller_name: 'SBPDCL (South Bihar)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Chhattisgarh ─────
+    { biller_id: 'CSPDCL', biller_name: 'CSPDCL (Chhattisgarh)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Delhi ─────
+    { biller_id: 'TPDDL', biller_name: 'Tata Power Delhi (TPDDL)', biller_category: 'Electricity' },
+    { biller_id: 'BRPL', biller_name: 'BSES Rajdhani (BRPL)', biller_category: 'Electricity' },
+    { biller_id: 'BYPL', biller_name: 'BSES Yamuna (BYPL)', biller_category: 'Electricity' },
+    { biller_id: 'NDMC_E', biller_name: 'NDMC Electricity (Delhi)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Gujarat ─────
+    { biller_id: 'DGVCL', biller_name: 'DGVCL (Dakshin Gujarat Vij)', biller_category: 'Electricity' },
+    { biller_id: 'MGVCL', biller_name: 'MGVCL (Madhya Gujarat Vij)', biller_category: 'Electricity' },
+    { biller_id: 'PGVCL', biller_name: 'PGVCL (Paschim Gujarat Vij)', biller_category: 'Electricity' },
+    { biller_id: 'UGVCL', biller_name: 'UGVCL (Uttar Gujarat Vij)', biller_category: 'Electricity' },
+    { biller_id: 'TORRENT_AHMD', biller_name: 'Torrent Power Ahmedabad', biller_category: 'Electricity' },
+    { biller_id: 'TORRENT_SURAT', biller_name: 'Torrent Power Surat', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Haryana ─────
+    { biller_id: 'DHBVNL', biller_name: 'DHBVNL (Dakshin Haryana)', biller_category: 'Electricity' },
+    { biller_id: 'UHBVNL', biller_name: 'UHBVNL (Uttar Haryana)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Himachal Pradesh ─────
+    { biller_id: 'HPSEBL', biller_name: 'HPSEBL (Himachal Pradesh)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Jharkhand ─────
+    { biller_id: 'JBVNL', biller_name: 'JBVNL (Jharkhand)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Karnataka ─────
+    { biller_id: 'BESCOM', biller_name: 'BESCOM (Bangalore)', biller_category: 'Electricity' },
+    { biller_id: 'MESCOM', biller_name: 'MESCOM (Mangalore)', biller_category: 'Electricity' },
+    { biller_id: 'HESCOM', biller_name: 'HESCOM (Hubli)', biller_category: 'Electricity' },
+    { biller_id: 'GESCOM', biller_name: 'GESCOM (Gulbarga)', biller_category: 'Electricity' },
+    { biller_id: 'CESCL', biller_name: 'CESC (Mysuru)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Kerala ─────
+    { biller_id: 'KSEBL', biller_name: 'KSEBL (Kerala)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Madhya Pradesh ─────
+    { biller_id: 'MPPKVVCL', biller_name: 'MP Poorv Kshetra (MPPKVVCL)', biller_category: 'Electricity' },
+    { biller_id: 'MPMKVVCL', biller_name: 'MP Madhya Kshetra (MPMKVVCL)', biller_category: 'Electricity' },
+    { biller_id: 'MPPMKVVCL', biller_name: 'MP Paschim Kshetra (MPPMKVVCL)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Maharashtra ─────
+    { biller_id: 'MSEDCL', biller_name: 'MSEDCL (Maharashtra)', biller_category: 'Electricity' },
+    { biller_id: 'ADANI_MUM', biller_name: 'Adani Electricity Mumbai', biller_category: 'Electricity' },
+    { biller_id: 'BEST', biller_name: 'BEST (Mumbai)', biller_category: 'Electricity' },
+    { biller_id: 'TATA_MUM', biller_name: 'Tata Power Mumbai', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Odisha ─────
+    { biller_id: 'TPCODL', biller_name: 'TP Central Odisha (TPCODL)', biller_category: 'Electricity' },
+    { biller_id: 'TPNODL', biller_name: 'TP Northern Odisha (TPNODL)', biller_category: 'Electricity' },
+    { biller_id: 'TPSODL', biller_name: 'TP Southern Odisha (TPSODL)', biller_category: 'Electricity' },
+    { biller_id: 'TPWODL', biller_name: 'TP Western Odisha (TPWODL)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Punjab ─────
+    { biller_id: 'PSPCL', biller_name: 'PSPCL (Punjab)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Rajasthan ─────
+    { biller_id: 'JVVNL', biller_name: 'JVVNL (Jaipur)', biller_category: 'Electricity' },
+    { biller_id: 'AVVNL', biller_name: 'AVVNL (Ajmer)', biller_category: 'Electricity' },
+    { biller_id: 'JDVVNL', biller_name: 'JdVVNL (Jodhpur)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Tamil Nadu ─────
+    { biller_id: 'TANGEDCO', biller_name: 'TANGEDCO (Tamil Nadu)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Telangana ─────
+    { biller_id: 'TSNPDCL', biller_name: 'TSNPDCL (North Telangana)', biller_category: 'Electricity' },
+    { biller_id: 'TSSPDCL', biller_name: 'TSSPDCL (South Telangana)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Uttar Pradesh ─────
+    { biller_id: 'UPPCL', biller_name: 'UPPCL (Uttar Pradesh)', biller_category: 'Electricity' },
+    { biller_id: 'PUVVNL', biller_name: 'PuVVNL (Poorvanchal UP)', biller_category: 'Electricity' },
+    { biller_id: 'PVVNL', biller_name: 'PVVNL (Paschimanchal UP)', biller_category: 'Electricity' },
+    { biller_id: 'MVVNL', biller_name: 'MVVNL (Madhyanchal UP)', biller_category: 'Electricity' },
+    { biller_id: 'DVVNL', biller_name: 'DVVNL (Dakshinanchal UP)', biller_category: 'Electricity' },
+    { biller_id: 'NPCL', biller_name: 'NPCL (Noida Power)', biller_category: 'Electricity' },
+    { biller_id: 'KESCO', biller_name: 'KESCO (Kanpur)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Uttarakhand ─────
+    { biller_id: 'UPCL', biller_name: 'UPCL (Uttarakhand)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — West Bengal ─────
+    { biller_id: 'WBSEDCL', biller_name: 'WBSEDCL (West Bengal)', biller_category: 'Electricity' },
+    { biller_id: 'CESC_KOL', biller_name: 'CESC Limited (Kolkata)', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — Goa ─────
+    { biller_id: 'GOA_ELEC', biller_name: 'Electricity Dept. Goa', biller_category: 'Electricity' },
+    // ───── ELECTRICITY — J&K ─────
+    { biller_id: 'JKPDD', biller_name: 'JKPDD (Jammu & Kashmir)', biller_category: 'Electricity' },
+
+    // ───── GAS — LPG Providers ─────
+    { biller_id: 'HPGAS', biller_name: 'HP Gas (HPCL)', biller_category: 'Gas' },
+    { biller_id: 'BHARATGAS', biller_name: 'Bharat Gas (BPCL)', biller_category: 'Gas' },
+    { biller_id: 'INDANE', biller_name: 'Indane Gas (IOCL)', biller_category: 'Gas' },
+    // ───── GAS — PNG / City Gas ─────
+    { biller_id: 'IGL', biller_name: 'IGL (Indraprastha Gas) — Delhi NCR', biller_category: 'Gas' },
+    { biller_id: 'MGL', biller_name: 'MGL (Mahanagar Gas) — Mumbai', biller_category: 'Gas' },
+    { biller_id: 'GAIL_GAS', biller_name: 'GAIL Gas Limited', biller_category: 'Gas' },
+    { biller_id: 'GGL', biller_name: 'Gujarat Gas Limited (GGL)', biller_category: 'Gas' },
+    { biller_id: 'ADANI_TOTAL_GAS', biller_name: 'Adani Total Gas Limited', biller_category: 'Gas' },
+    { biller_id: 'TORRENT_GAS', biller_name: 'Torrent Gas', biller_category: 'Gas' },
+    { biller_id: 'THINK_GAS', biller_name: 'Think Gas', biller_category: 'Gas' },
+    { biller_id: 'MNGL', biller_name: 'MNGL (Maharashtra Natural Gas) — Pune', biller_category: 'Gas' },
+    { biller_id: 'SABARMATI_GAS', biller_name: 'Sabarmati Gas (North Gujarat)', biller_category: 'Gas' },
+    { biller_id: 'AAVANTIKA_GAS', biller_name: 'Aavantika Gas (Indore/Ujjain)', biller_category: 'Gas' },
+    { biller_id: 'BGASL', biller_name: 'Bhagyanagar Gas (AP/Telangana)', biller_category: 'Gas' },
+    { biller_id: 'GREEN_GAS', biller_name: 'Green Gas Limited (Lucknow)', biller_category: 'Gas' },
+    { biller_id: 'AGCL', biller_name: 'Assam Gas Company (AGCL)', biller_category: 'Gas' },
+
+    // ───── WATER ─────
+    { biller_id: 'BWSSB', biller_name: 'BWSSB (Bangalore Water)', biller_category: 'Water' },
+    { biller_id: 'MCGM_WATER', biller_name: 'MCGM Water (Mumbai)', biller_category: 'Water' },
+    { biller_id: 'DJB', biller_name: 'Delhi Jal Board (DJB)', biller_category: 'Water' },
+    { biller_id: 'CMWSSB', biller_name: 'CMWSSB (Chennai Metro Water)', biller_category: 'Water' },
+    { biller_id: 'HMWS_SB', biller_name: 'HMWS&SB (Hyderabad Metro Water)', biller_category: 'Water' },
+    { biller_id: 'PHED_RAJ', biller_name: 'PHED Rajasthan (Water)', biller_category: 'Water' },
+    { biller_id: 'PUNE_WATER', biller_name: 'PMC (Pune Municipal Water)', biller_category: 'Water' },
+    { biller_id: 'KWA', biller_name: 'Kerala Water Authority (KWA)', biller_category: 'Water' },
+
+    // ───── BROADBAND / INTERNET ─────
+    { biller_id: 'AIRTEL_BB', biller_name: 'Airtel Broadband', biller_category: 'Broadband' },
+    { biller_id: 'JIO_FIBER', biller_name: 'Jio Fiber', biller_category: 'Broadband' },
+    { biller_id: 'BSNL_BB', biller_name: 'BSNL Broadband', biller_category: 'Broadband' },
+    { biller_id: 'ACT_BB', biller_name: 'ACT Fibernet', biller_category: 'Broadband' },
+    { biller_id: 'HATHWAY', biller_name: 'Hathway Broadband', biller_category: 'Broadband' },
+    { biller_id: 'TATA_PLAY_BB', biller_name: 'Tata Play Broadband', biller_category: 'Broadband' },
+    { biller_id: 'YOU_BB', biller_name: 'YOU Broadband', biller_category: 'Broadband' },
+    { biller_id: 'ASIANET_BB', biller_name: 'Asianet Broadband (Kerala)', biller_category: 'Broadband' },
+    { biller_id: 'DEN_BB', biller_name: 'DEN Networks', biller_category: 'Broadband' },
+
+    // ───── MOBILE POSTPAID ─────
+    { biller_id: 'AIRTEL_POST', biller_name: 'Airtel Postpaid', biller_category: 'Mobile Postpaid' },
+    { biller_id: 'JIO_POST', biller_name: 'Jio Postpaid', biller_category: 'Mobile Postpaid' },
+    { biller_id: 'VI_POST', biller_name: 'Vi (Vodafone Idea) Postpaid', biller_category: 'Mobile Postpaid' },
+    { biller_id: 'BSNL_POST', biller_name: 'BSNL Mobile Postpaid', biller_category: 'Mobile Postpaid' },
+    { biller_id: 'MTNL_POST', biller_name: 'MTNL Postpaid (Mumbai/Delhi)', biller_category: 'Mobile Postpaid' },
+
+    // ───── DTH ─────
+    { biller_id: 'TATA_PLAY', biller_name: 'Tata Play (DTH)', biller_category: 'DTH' },
+    { biller_id: 'DISH_TV', biller_name: 'Dish TV', biller_category: 'DTH' },
+    { biller_id: 'AIRTEL_DTH', biller_name: 'Airtel DTH (Xstream)', biller_category: 'DTH' },
+    { biller_id: 'SUN_DTH', biller_name: 'Sun Direct DTH', biller_category: 'DTH' },
+    { biller_id: 'VIDEOCON_DTH', biller_name: 'D2H (Videocon DTH)', biller_category: 'DTH' },
 ];
 
 /**
