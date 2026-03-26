@@ -259,6 +259,21 @@ export default function Dashboard() {
                     )}
                 </Card>
 
+                {/* Bills & Assets Widget (Parents Only) */}
+                {profile?.role === 'parent' && (
+                    <Card
+                        onClick={() => navigate('/bills')}
+                        className="bg-gradient-to-br from-emerald-50 to-white border-emerald-100 relative overflow-hidden group cursor-pointer hover:shadow-md transition-all"
+                    >
+                        <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-100 rounded-full opacity-50 blur-xl group-hover:scale-110 transition-transform" />
+
+                        <h3 className="font-semibold text-emerald-900 mb-2 z-10 relative">Payments & Assets</h3>
+                        <div className="flex items-baseline gap-2 z-10 relative">
+                            <span className="text-lg font-bold text-emerald-700">Manage Bills & Insurance</span>
+                        </div>
+                    </Card>
+                )}
+
                 {/* Grocery Widget */}
                 <Card
                     onClick={() => navigate('/groceries')}

@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { Home, ShoppingCart, StickyNote, CheckCircle, User, Gamepad2, Trophy, Banknote, MessageSquare } from 'lucide-react';
+import { Home, ShoppingCart, StickyNote, CheckCircle, User, Gamepad2, Trophy, Banknote, MessageSquare, Building, Shield } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 import { useAuth } from '../../contexts/AuthContext';
@@ -16,16 +16,19 @@ export function AppLayout() {
                 </div>
             </main>
 
-            <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white px-6 pb-6 pt-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-                <div className="mx-auto flex max-w-md justify-between">
+            <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white px-4 pb-6 pt-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] overflow-x-auto custom-scrollbar">
+                <div className="mx-auto flex max-w-md gap-6 min-w-max px-2">
                     <NavItem to="/" icon={<Home size={24} />} label="Home" />
 
                     {isParent && (
-                        <>
+                                    <>
                             <NavItem to="/groceries" icon={<ShoppingCart size={24} />} label="Shop" />
                             <NavItem to="/notes" icon={<StickyNote size={24} />} label="Notes" />
                             <NavItem to="/expenses" icon={<Banknote size={24} />} label="Split" />
                             <NavItem to="/chat" icon={<MessageSquare size={24} />} label="Chat" />
+                            {/* <NavItem to="/bills" icon={<Receipt size={24} />} label="Bills" /> */}
+                            <NavItem to="/insurance" icon={<Shield size={24} />} label="Insurance" />
+                            <NavItem to="/assets" icon={<Building size={24} />} label="Assets" />
                         </>
                     )}
                     <NavItem to="/chores" icon={<CheckCircle size={24} />} label="Chores" />

@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft } from 'lucide-react';
+import type { Profile } from '../types';
 import { formatCurrency } from '../lib/expense-utils';
 import { Toast, type ToastType } from '../components/ui/Toast';
 
@@ -15,14 +16,16 @@ export default function AddExpense() {
 
     const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
 
-    const [description, setDescription] = useState('');
-    const [amount, setAmount] = useState('');
-    const [category, setCategory] = useState('General');
+    const [description, setDescription] = useState(searchParams.get('desc') || '');
+    const [amount, setAmount] = useState(searchParams.get('amount') || '');
+    const [category, setCategory] = useState(searchParams.get('cat') || 'General');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [paidBy, setPaidBy] = useState(user?.id || '');
     const [splitType, setSplitType] = useState<'EQUAL' | 'PERCENTAGE' | 'EXACT'>('EQUAL');
 
-    const [familyMembers, setFamilyMembers] = useState<any[]>([]);
+    const billId = searchParams.get('bill_id');
+
+    const [familyMembers, setFamilyMembers] = useState<Profile[]>([]);
     const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
 
     // Store custom split values: { memberId: value }. Value is percentage (0-100) or amount ($).
@@ -30,7 +33,7 @@ export default function AddExpense() {
 
     useEffect(() => {
         fetchFamilyMembers();
-    }, []);
+    }, [searchParams]);
 
     const fetchFamilyMembers = async () => {
         let familyId = family?.id;
@@ -48,6 +51,7 @@ export default function AddExpense() {
 
         if (members) {
             // 1. Flatten
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const allProfiles = members.map((m: any) => ({ ...m.profile, role: m.role })).filter(p => p && p.id);
 
             // 2. Filter parents only for "Paid By" and "Splits" (usually expenses are between parents, but if kids are needed we can adjust. Defaulting to PARENTS based on existing logic).
@@ -200,6 +204,16 @@ export default function AddExpense() {
             });
 
             if (error) throw error;
+
+            if (billId) {
+                const { error: billError } = await supabase.from('bills').update({ status: 'paid' }).eq('id', billId);
+                if (billError) {
+                    console.error('Failed to mark bill as paid:', billError);
+                } else {
+                    navigate('/bills');
+                    return;
+                }
+            }
 
             navigate('/expenses');
         } catch (error) {

@@ -8,6 +8,7 @@ interface AuthContextType {
     user: User | null;
     profile: Profile | null;
     family: any | null;
+    currentFamily: any | null; // Alias for family that some pages use
     myFamilies: any[]; // List of families the user belongs to
     loading: boolean;
     signOut: () => Promise<void>;
@@ -205,7 +206,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     return (
-        <AuthContext.Provider value={{ session, user, profile, family, myFamilies, loading, signOut, refreshProfile, switchFamily, leaveFamily }}>
+        <AuthContext.Provider value={{ session, user, profile, family, currentFamily: family, myFamilies, loading, signOut, refreshProfile, switchFamily, leaveFamily }}>
             {children}
         </AuthContext.Provider>
     );

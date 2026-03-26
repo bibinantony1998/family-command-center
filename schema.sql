@@ -21,6 +21,9 @@ drop table if exists notes cascade;
 drop table if exists groceries cascade;
 drop table if exists family_members cascade;
 drop table if exists profiles cascade;
+drop table if exists bills cascade;
+drop table if exists insurance_policies cascade;
+drop table if exists assets cascade;
 drop table if exists families cascade;
 
 -- 2. EXTENSIONS
@@ -597,6 +600,90 @@ create policy "Users can insert notifications" on notifications
 
 create policy "Recipients can update notifications" on notifications
   for update using (recipient_id = auth.uid());
+
+-- 11. ASSETS, INSURANCE, AND BILLS (Parents Only)
+create table assets (
+  id uuid primary key default uuid_generate_v4(),
+  family_id uuid references families(id) not null,
+  type text not null check (type in ('vehicle', 'property', 'other')),
+  details jsonb,
+  added_by uuid references profiles(id) not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create table insurance_policies (
+  id uuid primary key default uuid_generate_v4(),
+  family_id uuid references families(id) not null,
+  target_id uuid, -- Can link to an asset_id or profile_id
+  type text not null check (type in ('health', 'life', 'vehicle', 'property', 'medical')),
+  provider text not null,
+  premium_amount numeric(10,2) not null check (premium_amount > 0),
+  coverage_amount numeric(15,2),
+  expiry_date date not null,
+  next_due_date date,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create table bills (
+  id uuid primary key default uuid_generate_v4(),
+  family_id uuid references families(id) not null,
+  category text not null check (category in ('electricity', 'water', 'gas', 'broadband', 'dth', 'mobile_postpaid', 'landline', 'education_fees', 'credit_card', 'property_tax', 'municipal_tax', 'subscription', 'other')),
+  provider_name text not null,
+  consumer_number text not null,
+  due_date date,
+  amount numeric(10,2) not null check (amount >= 0),
+  status text not null check (status in ('pending', 'paid', 'overdue')) default 'pending',
+  auto_pay boolean default false,
+  visibility text not null check (visibility in ('personal', 'public')) default 'public',
+  added_by uuid references profiles(id) not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- RLS Policies for Assets
+alter table assets enable row level security;
+create policy "Parents view assets" on assets
+  for select using (family_id = get_my_family_id() and get_my_role() = 'parent');
+create policy "Parents insert assets" on assets
+  for insert with check (family_id = get_my_family_id() and get_my_role() = 'parent');
+create policy "Parents update assets" on assets
+  for update using (family_id = get_my_family_id() and get_my_role() = 'parent');
+create policy "Parents delete assets" on assets
+  for delete using (family_id = get_my_family_id() and get_my_role() = 'parent');
+
+-- RLS Policies for Insurance Policies
+alter table insurance_policies enable row level security;
+create policy "Parents view insurance" on insurance_policies
+  for select using (family_id = get_my_family_id() and get_my_role() = 'parent');
+create policy "Parents insert insurance" on insurance_policies
+  for insert with check (family_id = get_my_family_id() and get_my_role() = 'parent');
+create policy "Parents update insurance" on insurance_policies
+  for update using (family_id = get_my_family_id() and get_my_role() = 'parent');
+create policy "Parents delete insurance" on insurance_policies
+  for delete using (family_id = get_my_family_id() and get_my_role() = 'parent');
+
+-- RLS Policies for Bills
+alter table bills enable row level security;
+create policy "Parents view bills if public or personal" on bills
+  for select using (
+    family_id = get_my_family_id() 
+    and get_my_role() = 'parent'
+    and (visibility = 'public' or (visibility = 'personal' and added_by = auth.uid()))
+  );
+create policy "Parents insert bills" on bills
+  for insert with check (family_id = get_my_family_id() and get_my_role() = 'parent' and added_by = auth.uid());
+create policy "Parents update own or public bills" on bills
+  for update using (
+    family_id = get_my_family_id() 
+    and get_my_role() = 'parent'
+    and (visibility = 'public' or (visibility = 'personal' and added_by = auth.uid()))
+  );
+create policy "Parents delete own or public bills" on bills
+  for delete using (
+    family_id = get_my_family_id() 
+    and get_my_role() = 'parent'
+    and (visibility = 'public' or (visibility = 'personal' and added_by = auth.uid()))
+  );
+
 -- RPC: Leave Family
 -- Removes the user from a family.
 -- If the user is the LAST member, deletes the family and ALL associated data.
@@ -643,6 +730,9 @@ begin
     delete from game_scores where family_id = target_family_id;
     delete from chores where family_id = target_family_id;
     delete from notes where family_id = target_family_id;
+    delete from assets where family_id = target_family_id;
+    delete from insurance_policies where family_id = target_family_id;
+    delete from bills where family_id = target_family_id;
     delete from groceries where family_id = target_family_id;
 
     -- Clear legacy references in profiles table for ANY user (not just self) to avoid FK constraint error
@@ -1051,3 +1141,13 @@ ALTER TABLE chat_messages
 -- 15. DELETE POLICY FOR CHAT MESSAGES
 CREATE POLICY "Senders can delete own messages" ON chat_messages
   FOR DELETE USING (sender_id = auth.uid());
+
+-- 16. DATE OF BIRTH FOR INSURANCE ELIGIBILITY
+-- Add date_of_birth to profiles for age-based insurance calculations
+ALTER TABLE profiles
+    ADD COLUMN IF NOT EXISTS date_of_birth date;
+
+-- Allow family members to view each other's date_of_birth (needed for insurance grouping)
+-- Note: Existing "Users can view family members" policy on profiles already covers this.
+-- This migration just adds the column — no new policy needed.
+

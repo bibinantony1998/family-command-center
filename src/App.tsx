@@ -49,6 +49,12 @@ import Expenses from './pages/Expenses';
 import AddExpense from './pages/AddExpense';
 import SettleUp from './pages/SettleUp';
 import ExpenseReports from './pages/ExpenseReports';
+import BillsDashboard from './pages/BillsDashboard';
+import AddBill from './pages/AddBill';
+import Assets from './pages/Assets';
+import AddAsset from './pages/AddAsset';
+import Insurance from './pages/Insurance';
+import AddPolicy from './pages/AddPolicy';
 export default function App() {
   return (
     <AuthProvider>
@@ -135,6 +141,12 @@ function AuthenticatedAppContent() {
         <Route path="expenses/add" element={<AddExpense />} />
         <Route path="expenses/settle" element={<SettleUp />} />
         <Route path="expenses/reports" element={<ExpenseReports />} />
+        <Route path="bills" element={<BillsDashboard />} />
+        <Route path="bills/add" element={<AddBill />} />
+        <Route path="assets" element={<Assets />} />
+        <Route path="assets/add" element={<AddAsset />} />
+        <Route path="insurance" element={<Insurance />} />
+        <Route path="insurance/add" element={<AddPolicy />} />
         <Route path="join-family" element={<JoinFamily />} />
       </Route>
     </Routes>
