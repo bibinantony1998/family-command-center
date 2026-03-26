@@ -12,6 +12,8 @@
   --color-accent: #14b8a6;
   --color-accent-light: #ccfbf1;
   --color-surface: #ffffff;
+
+  --container-md: 32rem;
 }
 
 @layer utilities {

@@ -84,7 +84,7 @@ export default function Assets() {
                     </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-2 gap-4">
                     {assets.map(asset => {
                         const details = asset.details as Record<string, string>;
                         const name = details?.name || details?.registration_number || `${asset.type} asset`;

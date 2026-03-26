@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, Search, Receipt, Info } from 'lucide-react';
-import { MOCK_BILLERS, fetchMockBillFromBBPS } from '../lib/api/bbps';
+import { MOCK_BILLERS, fetchMockBillFromBBPS, INDIAN_STATES } from '../lib/api/bbps';
 import type { MockBillResponse } from '../lib/api/bbps';
 import { Toast, type ToastType } from '../components/ui/Toast';
 import { Select } from '../components/ui/Select';
@@ -39,6 +39,24 @@ export default function AddBill() {
         'MSEDCL': { label: 'Consumer Number', placeholder: 'e.g. 1234567890', hint: 'Found on top of your MSEDCL bill' },
         'KSEB': { label: 'Consumer Number', placeholder: 'e.g. 2001234567', hint: 'On your KSEB bill, starts with 2' },
         'KSEBL': { label: 'Consumer Number', placeholder: 'e.g. 2001234567', hint: 'On your KSEBL bill, starts with 2' },
+        'TCED': { label: 'Consumer Number', placeholder: 'e.g. 100012345', hint: 'Consumer Number on your Thrissur Corporation bill' },
+        'KANNUR_ELEC': { label: 'Consumer Number', placeholder: 'e.g. 100012345', hint: 'Consumer Number on your Kannur Electricity bill' },
+        'KDHP': { label: 'Consumer Number', placeholder: 'e.g. 100012345', hint: 'Consumer Number on your KDHP Munnar bill' },
+        'MePDCL': { label: 'Consumer Number', placeholder: 'e.g. 123456789', hint: 'Consumer Number on your Meghalaya bill' },
+        'TSECL': { label: 'Consumer Account Number', placeholder: 'e.g. 123456789', hint: 'Account Number on your Tripura bill' },
+        'MSPDCL': { label: 'Consumer Number', placeholder: 'e.g. 123456789', hint: 'Consumer Number on your Manipur bill' },
+        'DOP_NAGALAND': { label: 'Consumer Number', placeholder: 'e.g. 123456789', hint: 'Consumer Number on your Nagaland bill' },
+        'DOP_ARUNACHAL': { label: 'Consumer Number', placeholder: 'e.g. 123456789', hint: 'Consumer Number on your Arunachal Pradesh bill' },
+        'SIKKIM_POWER': { label: 'Contract Account Number', placeholder: 'e.g. 123456789', hint: 'Account Number on your Sikkim bill' },
+        'PED_MIZORAM': { label: 'Consumer Number', placeholder: 'e.g. 123456789', hint: 'Consumer Number on your Mizoram bill' },
+        'ED_CHANDIGARH': { label: 'Account Number', placeholder: 'e.g. 123456789', hint: 'Account Number on your Chandigarh bill' },
+        'ED_PUDUCHERRY': { label: 'Consumer Number', placeholder: 'e.g. 123456789', hint: 'Number on your Puducherry bill' },
+        'DNHPDCL': { label: 'Consumer Number', placeholder: 'e.g. 123456789', hint: 'Consumer Number on your DNHPDCL bill' },
+        'ED_ANDAMAN': { label: 'Consumer Number', placeholder: 'e.g. 123456789', hint: 'Consumer Number on your Andaman bill' },
+        'LAKSHADWEEP_ED': { label: 'Consumer Number', placeholder: 'e.g. 123456789', hint: 'Consumer Number on your Lakshadweep bill' },
+        'GIFT_POWER': { label: 'Consumer Number', placeholder: 'e.g. 123456789', hint: 'Consumer Number on your Gift Power bill' },
+        'IPCL': { label: 'Consumer Number', placeholder: 'e.g. 123456789', hint: 'Consumer Number on your IPCL bill' },
+        'TORRENT_AGRA': { label: 'Consumer Number', placeholder: 'e.g. 123456789', hint: 'Consumer Number on your Torrent Power Agra bill' },
         'TPDDL': { label: 'CA Number', placeholder: 'e.g. 302XXXXXXX', hint: '11-digit CA Number on your bill' },
         'BRPL': { label: 'Consumer Account No.', placeholder: 'e.g. 3100XXXXXX', hint: 'On your BSES Rajdhani bill' },
         'BYPL': { label: 'Consumer Account No.', placeholder: 'e.g. 6100XXXXXX', hint: 'On your BSES Yamuna bill' },
@@ -62,12 +80,36 @@ export default function AddBill() {
         'GGL': { label: 'Consumer No.', placeholder: 'e.g. 9-digit number', hint: 'On your Gujarat Gas bill' },
         'ADANI_TOTAL_GAS': { label: 'Consumer No.', placeholder: 'e.g. 10-digit number', hint: 'On your Adani Gas bill' },
         'MNGL': { label: 'Consumer Number', placeholder: 'e.g. 9-digit number', hint: 'Consumer No. on your MNGL bill' },
+        'BENGAL_GAS': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your Bengal Gas bill' },
+        'CUGL': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your CUGL bill' },
+        'CHAROTAR_GAS': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your Charotar Gas bill' },
+        'GOA_NATURAL_GAS': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your Goa Natural Gas bill' },
+        'GODAVARI_GAS': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your Godavari Gas bill' },
+        'HARYANA_CITY_GAS': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your Haryana City Gas bill' },
+        'IOAGPL': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your IOAGPL bill' },
+        'IOCL_PNG': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your IOCL Piped Gas bill' },
+        'IRM_ENERGY': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your IRM Energy bill' },
+        'MEGHA_GAS': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your Megha Gas bill' },
+        'NAVERIYA_GAS': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your Naveriya Gas bill' },
+        'PURBA_BHARATI_GAS': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your Purba Bharati Gas bill' },
+        'RAJASTHAN_STATE_GAS': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your Rajasthan State Gas bill' },
+        'SITI_ENERGY': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your Siti Energy bill' },
+        'VGL': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your Vadodara Gas bill' },
         // Water
         'BWSSB': { label: 'Service Connection No.', placeholder: 'e.g. 10000XXXXX', hint: 'SCN on your BWSSB bill' },
         'DJB': { label: 'Consumer No. (K No.)', placeholder: 'e.g. KX-XXXXXXXX', hint: 'K. No. on your Delhi Jal Board bill' },
         'MCGM_WATER': { label: 'Consumer ID', placeholder: 'e.g. 12-digit ID', hint: 'Consumer ID on your MCGM water bill' },
         'CMWSSB': { label: 'Consumer No.', placeholder: 'e.g. 10-digit number', hint: 'On your Chennai Metro Water bill' },
         'HMWS_SB': { label: 'Consumer No.', placeholder: 'e.g. 10-digit number', hint: 'On your Hyderabad water bill' },
+        'AMC_WATER': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your AMC water bill' },
+        'BMC_WATER': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your BMC water bill' },
+        'GWMC_WATER': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your GWMC water bill' },
+        'GMC_WATER': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your GMC water bill' },
+        'IMC_WATER': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your IMC water bill' },
+        'JMC_WATER': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your JMC water bill' },
+        'LMC_WATER': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your LMC water bill' },
+        'MCG_WATER': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your MCG water bill' },
+        'UIT_WATER': { label: 'Consumer Number', placeholder: 'e.g. 12345678', hint: 'Consumer Number on your UIT water bill' },
         // Broadband
         'AIRTEL_BB': { label: 'Account ID / Mobile No.', placeholder: 'e.g. 10-digit mobile', hint: 'Registered mobile or Account ID' },
         'JIO_FIBER': { label: 'Account Number', placeholder: 'e.g. JF-XXXXXXXXX', hint: 'Account No. in Jio app → My Account' },
@@ -90,14 +132,21 @@ export default function AddBill() {
 
 
 
+    // Form State — no default selection, user must choose
+    const [selectedState, setSelectedState] = useState<string>('');
+    const [selectedBiller, setSelectedBiller] = useState<string>('');
+
     // Available Billers for this category
     const availableBillers = React.useMemo(() => {
-        if (!targetCat) return MOCK_BILLERS; // Show all if no category specific
-        return MOCK_BILLERS.filter(b => b.biller_category === targetCat);
-    }, [targetCat]);
-
-    // Form State — no default selection, user must choose
-    const [selectedBiller, setSelectedBiller] = useState<string>('');
+        let billers = MOCK_BILLERS;
+        if (targetCat) {
+            billers = billers.filter(b => b.biller_category === targetCat);
+        }
+        if (selectedState) {
+            billers = billers.filter(b => b.state === selectedState || b.state === 'National');
+        }
+        return billers.sort((a, b) => a.biller_name.localeCompare(b.biller_name));
+    }, [targetCat, selectedState]);
     const [consumerNumber, setConsumerNumber] = useState('');
     const [isFetching, setIsFetching] = useState(false);
 
@@ -178,12 +227,35 @@ export default function AddBill() {
                 {step === 1 ? (
                     <form onSubmit={handleFetchBill} className="space-y-6">
                         <div className="space-y-4 bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                            {!['Mobile Postpaid', 'DTH', 'Credit Card', 'Broadband'].includes(targetCat) && (
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Select State</label>
+                                    <Select
+                                        value={selectedState}
+                                        onChange={(val) => {
+                                            setSelectedState(val);
+                                            setSelectedBiller(''); // Reset biller when state changes
+                                        }}
+                                        placeholder="All States (India)"
+                                        searchable={true}
+                                        options={[
+                                            { label: 'All States (India)', value: '' },
+                                            ...INDIAN_STATES.filter(s => s !== 'National').sort().map(s => ({
+                                                label: s,
+                                                value: s
+                                            }))
+                                        ]}
+                                    />
+                                </div>
+                            )}
+
                             <div>
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">Select Biller Provider</label>
                                 <Select
                                     value={selectedBiller}
                                     onChange={setSelectedBiller}
                                     placeholder="-- Select a Provider --"
+                                    searchable={true}
                                     options={availableBillers.map(b => ({
                                         label: b.biller_name,
                                         value: b.biller_id
@@ -228,16 +300,23 @@ export default function AddBill() {
                             <div className="flex-1">
                                 <h3 className="font-bold text-slate-900 text-lg">Bill Found!</h3>
                                 <p className="text-slate-600 mt-1">Consumer: <span className="font-semibold text-slate-900">{fetchedBill?.consumer_name}</span></p>
-                                <div className="mt-4 bg-white p-4 rounded-lg border border-indigo-100 flex justify-between items-center">
-                                    <div>
-                                        <p className="text-sm text-slate-500 mb-1">Due Amount</p>
-                                        <p className="text-2xl font-bold text-red-600">₹{fetchedBill?.amount}</p>
+                                {fetchedBill?.status === 'PAID' || fetchedBill?.amount === 0 ? (
+                                    <div className="mt-4 bg-emerald-50 p-4 rounded-lg border border-emerald-200 text-emerald-700">
+                                        <p className="font-semibold text-emerald-800">No active bill found</p>
+                                        <p className="text-sm mt-0.5">All previous bills are fully paid!</p>
                                     </div>
-                                    <div className="text-right">
-                                        <p className="text-sm text-slate-500 mb-1">Due Date</p>
-                                        <p className="font-semibold text-slate-900">{fetchedBill?.due_date}</p>
+                                ) : (
+                                    <div className="mt-4 bg-white p-4 rounded-lg border border-indigo-100 flex justify-between items-center">
+                                        <div>
+                                            <p className="text-sm text-slate-500 mb-1">Due Amount</p>
+                                            <p className="text-2xl font-bold text-red-600">₹{fetchedBill?.amount}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-sm text-slate-500 mb-1">Due Date</p>
+                                            <p className="font-semibold text-slate-900">{fetchedBill?.due_date}</p>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
                         </div>
 

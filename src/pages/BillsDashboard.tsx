@@ -132,7 +132,7 @@ export default function BillsDashboard() {
             {/* Services Hub Grid */}
             <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm mb-8">
                 <h2 className="text-lg font-bold text-slate-800 mb-4">Payment Categories</h2>
-                <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                <div className="grid grid-cols-4 2xl:grid-cols-8 gap-4 mt-4">
                     {[
                         { id: 'electricity', label: 'Electricity', icon: <Zap className="w-5 h-5 text-yellow-500" /> },
                         { id: 'water', label: 'Water', icon: <Droplet className="w-5 h-5 text-blue-500" /> },

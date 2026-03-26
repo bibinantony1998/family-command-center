@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { Home, ShoppingCart, StickyNote, CheckCircle, User, Gamepad2, Trophy, Banknote, MessageSquare, Receipt, Building } from 'lucide-react';
+import { Home, ShoppingCart, StickyNote, CheckCircle, User, Gamepad2, Trophy, Banknote, MessageSquare, Building, Shield } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 import { useAuth } from '../../contexts/AuthContext';
@@ -21,12 +21,13 @@ export function AppLayout() {
                     <NavItem to="/" icon={<Home size={24} />} label="Home" />
 
                     {isParent && (
-                        <>
+                                    <>
                             <NavItem to="/groceries" icon={<ShoppingCart size={24} />} label="Shop" />
                             <NavItem to="/notes" icon={<StickyNote size={24} />} label="Notes" />
                             <NavItem to="/expenses" icon={<Banknote size={24} />} label="Split" />
                             <NavItem to="/chat" icon={<MessageSquare size={24} />} label="Chat" />
-                            <NavItem to="/bills" icon={<Receipt size={24} />} label="Bills" />
+                            {/* <NavItem to="/bills" icon={<Receipt size={24} />} label="Bills" /> */}
+                            <NavItem to="/insurance" icon={<Shield size={24} />} label="Insurance" />
                             <NavItem to="/assets" icon={<Building size={24} />} label="Assets" />
                         </>
                     )}

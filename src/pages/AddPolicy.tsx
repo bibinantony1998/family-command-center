@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import {
     ArrowLeft, Search, Shield, CheckCircle2, UserCircle2, PlusCircle,
-    ChevronRight, AlertCircle, Calendar,
+    ChevronRight, AlertCircle, Calendar, Columns, X, Check
 } from 'lucide-react';
 import { fetchMockInsuranceQuotes, groupMembersForInsurance } from '../lib/api/bbps';
 import type { Quote, InsuranceMember } from '../lib/api/bbps';
@@ -73,6 +73,9 @@ export default function AddPolicy() {
     const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
+    const [compareList, setCompareList] = useState<Quote[]>([]);
+    const [detailedQuote, setDetailedQuote] = useState<Quote | null>(null);
+
     useEffect(() => {
         if (!currentFamily?.id) return;
         const loadData = async () => {
@@ -93,10 +96,22 @@ export default function AddPolicy() {
                 fetchAssets(currentFamily.id)
             ]);
 
+
             if (membersRes.data) {
                 const members = (membersRes.data as unknown as { profile: FamilyMember }[])
                     .map(m => m.profile)
-                    .filter((p): p is FamilyMember => p != null);
+                    .filter((p): p is FamilyMember => p != null)
+                    .map(m => {
+                        // 1. Try DB value (m.date_of_birth)
+                        // 2. Fallback to Auth profile (profile.date_of_birth) for logged-in user only
+                        const authDob = m.id === profile?.id ? profile?.date_of_birth : null;
+                        const resolvedDob = m.date_of_birth || authDob;
+                        
+                        if (resolvedDob && !m.date_of_birth) {
+                            return { ...m, date_of_birth: resolvedDob };
+                        }
+                        return m;
+                    });
                 setFamilyMembers(members);
             }
 
@@ -115,7 +130,7 @@ export default function AddPolicy() {
             setAssets(assetsData);
         };
         loadData();
-    }, [currentFamily?.id, insuranceType]);
+    }, [currentFamily?.id, insuranceType, profile?.id, profile?.date_of_birth]);
 
     const insuredMemberIds = new Set(existingPolicies.map(p => p.target_id).filter(Boolean));
     const uninsuredMembers = familyMembers.filter(m => !insuredMemberIds.has(m.id));
@@ -169,17 +184,51 @@ export default function AddPolicy() {
     };
 
     const handleSaveDobs = async () => {
-        const updates = Object.entries(dobInputs)
-            .filter(([id]) => !familyMembers.find(m => m.id === id)?.date_of_birth)
-            .map(([id, dob]) =>
-                supabase.from('profiles').update({ date_of_birth: dob }).eq('id', id)
-            );
+        const merged = { ...dobInputs };
+        // 1. Try to save to DB (profiles.date_of_birth)
+        let savedCount = 0;
+        let failedCount = 0;
+        let lastError = '';
 
+        const updates = Object.entries(merged)
+            .map(async ([id, dob]) => {
+                console.log(`Current User ID: ${profile?.id}`);
+                console.log(`Target Profile ID: ${id}`);
+                console.log(`Mismatch? ${profile?.id !== id ? 'YES - THIS WILL FAIL RLS' : 'NO - RLS SHOULD PASS'}`);
+                console.log(`Attempting to save DOB for ID: ${id}, Value: ${dob}`);
+                const { data, error, count } = await supabase
+                    .from('profiles')
+                    .update({ date_of_birth: dob })
+                    .eq('id', id)
+                    .select(); // Request updated data back to verify success
+
+                if (error) {
+                    console.error('DOB save error:', id, error.message, error.details);
+                    failedCount++;
+                    lastError = error.message;
+                } else if (!data || data.length === 0) {
+                    console.warn('DOB save matched 0 rows for ID:', id);
+                    failedCount++;
+                    lastError = 'No profile found with this ID or permission denied.';
+                } else {
+                    console.log('Successfully updated DB for ID:', id, data[0]);
+                    savedCount++;
+                }
+            });
         await Promise.all(updates);
 
-        // Optimistically update local state
+        if (failedCount > 0) {
+            setToast({ 
+                message: `Update failed for ${failedCount} member(s): ${lastError}`, 
+                type: 'error' 
+            });
+        } else if (savedCount > 0) {
+            setToast({ message: `Successfully saved ${savedCount} DOB(s) to the database!`, type: 'success' });
+        }
+
+        // 2. Optimistically update local state
         setFamilyMembers(prev => prev.map(m =>
-            dobInputs[m.id] ? { ...m, date_of_birth: dobInputs[m.id] } : m
+            merged[m.id] ? { ...m, date_of_birth: merged[m.id] } : m
         ));
 
         setShowDobModal(false);
@@ -397,7 +446,7 @@ export default function AddPolicy() {
                             )}
                         </div>
                         <button type="submit" disabled={!targetId} className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 disabled:opacity-50 flex justify-center items-center gap-2 text-lg shadow-sm">
-                            <Search className="w-5 h-5" /> Compare Quotes
+                            Compare Quotes
                         </button>
                     </form>
                 </div>
@@ -542,9 +591,12 @@ export default function AddPolicy() {
                         <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-full">{activeGroupLabel}</span>
                     </div>
 
-                    <div>
-                        <h2 className="text-2xl font-bold text-slate-900">Available Quotes</h2>
-                        <p className="text-slate-500 text-sm mt-1">Premiums are age-adjusted for your members.</p>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h2 className="text-2xl font-bold text-slate-900">Available Quotes</h2>
+                            <p className="text-slate-500 text-sm mt-1">Premiums are age-adjusted for your members.</p>
+                        </div>
+                        {/* Removed viewMode toggle */}
                     </div>
 
                     {isFetchingQuotes ? (
@@ -553,67 +605,330 @@ export default function AddPolicy() {
                             <p className="text-slate-500 text-sm">Fetching the best quotes…</p>
                         </div>
                     ) : (
-                        <div className="grid gap-5 sm:grid-cols-2">
-                            {[...quotes].sort((a, b) => a.premium - b.premium).map((quote, idx) => {
-                                const isSelected = selectedQuote?.provider_name === quote.provider_name;
-                                const isCheapest = quote.premium === Math.min(...quotes.map(q => q.premium));
-                                return (
-                                    <div
-                                        key={idx}
-                                        onClick={() => setSelectedQuote(quote)}
-                                        className={`relative flex flex-col p-5 rounded-2xl border-2 cursor-pointer transition-all duration-200 ${isSelected ? 'border-indigo-500 bg-indigo-50 shadow-lg shadow-indigo-100' : 'border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md'}`}
-                                    >
-                                        {/* Best Price icon — sits on top-right border */}
-                                        {isCheapest && (
-                                            <div className="absolute -top-3.5 -right-3.5 w-8 h-8 rounded-full bg-green-500 flex items-center justify-center shadow-lg border-2 border-white z-10" title="Best Price">
-                                                <Shield className="w-4 h-4 text-white fill-white" />
+                        <>
+                            <div className="grid gap-5 sm:grid-cols-2">
+                                    {[...quotes].sort((a, b) => a.premium - b.premium).map((quote, idx) => {
+                                        const isSelected = selectedQuote?.provider_name === quote.provider_name;
+                                        const isCheapest = quote.premium === Math.min(...quotes.map(q => q.premium));
+                                        return (
+                                            <div
+                                                key={idx}
+                                                onClick={() => setSelectedQuote(quote)}
+                                                className={`relative flex flex-col p-5 rounded-2xl border-2 cursor-pointer transition-all duration-200 ${isSelected ? 'border-indigo-500 bg-indigo-50 shadow-lg shadow-indigo-100' : 'border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md'}`}
+                                            >
+                                                {isCheapest && (
+                                                    <div className="absolute -top-3.5 -right-3.5 w-8 h-8 rounded-full bg-green-500 flex items-center justify-center shadow-lg border-2 border-white z-10" title="Best Price">
+                                                        <Shield className="w-4 h-4 text-white fill-white" />
+                                                    </div>
+                                                )}
+                                                {isSelected && (
+                                                    <div className="absolute -bottom-3.5 -right-3.5 w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center shadow-lg border-2 border-white z-10">
+                                                        <Shield className="w-4 h-4 text-white fill-white" />
+                                                    </div>
+                                                )}
+                                                <h3 className="font-bold text-lg text-slate-900 leading-tight mb-4">{quote.provider_name}</h3>
+                                                <div className={`mb-4 p-3 rounded-xl ${isSelected ? 'bg-indigo-600' : 'bg-slate-800'}`}>
+                                                    <p className="text-xs text-white/70 mb-0.5 uppercase tracking-wider">Annual Premium</p>
+                                                    <p className="text-xl font-bold text-white leading-tight" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                                                        ₹{quote.premium.toLocaleString('en-IN')}/yr
+                                                    </p>
+                                                </div>
+                                                <div className="mb-4 flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2.5">
+                                                    <span className="text-xs font-medium text-slate-500 mr-4">Coverage</span>
+                                                    <span className="text-sm font-bold text-slate-800">₹{quote.coverage.toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <ul className="space-y-2 mt-auto mb-4">
+                                                    {quote.features.map((feature, i) => (
+                                                        <li key={i} className="flex items-start gap-2.5 text-sm text-slate-600">
+                                                            <div className="w-2 h-2 rounded-full bg-indigo-300 shrink-0 mt-1.5" />
+                                                            {feature}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                                <div className="flex flex-col gap-2 mt-auto">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setDetailedQuote(quote); }}
+                                                        className="w-full py-2.5 bg-white border border-slate-200 text-slate-600 font-semibold rounded-xl hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-colors"
+                                                    >
+                                                        View Details
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            const isComparing = compareList.some(q => q.provider_name === quote.provider_name);
+                                                            if (isComparing) {
+                                                                setCompareList(compareList.filter(q => q.provider_name !== quote.provider_name));
+                                                            } else if (compareList.length < 2) {
+                                                                setCompareList([...compareList, quote]);
+                                                            } else {
+                                                                setToast({ message: 'You can compare only 2 plans at a time.', type: 'error' });
+                                                            }
+                                                        }}
+                                                        className={`w-full flex items-center justify-center gap-1.5 py-2.5 font-semibold rounded-xl border transition-colors ${compareList.some(q => q.provider_name === quote.provider_name) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:text-indigo-600 hover:border-indigo-300'}`}
+                                                    >
+                                                        {compareList.some(q => q.provider_name === quote.provider_name) ? 'Added to Compare' : 'Add to Compare'}
+                                                    </button>
+                                                </div>
                                             </div>
-                                        )}
-                                        {/* Selected icon — sits on bottom-right border */}
-                                        {isSelected && (
-                                            <div className="absolute -bottom-3.5 -right-3.5 w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center shadow-lg border-2 border-white z-10">
-                                                <Shield className="w-4 h-4 text-white fill-white" />
-                                            </div>
-                                        )}
-                                        <h3 className="font-bold text-lg text-slate-900 leading-tight mb-4">{quote.provider_name}</h3>
-                                        <div className={`mb-4 p-3 rounded-xl ${isSelected ? 'bg-indigo-600' : 'bg-slate-800'}`}>
-                                            <p className="text-xs text-white/70 mb-0.5 uppercase tracking-wider">Annual Premium</p>
-                                            <p className="text-xl font-bold text-white leading-tight" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                                                ₹{quote.premium.toLocaleString('en-IN')}/yr
-                                            </p>
-                                        </div>
-                                        <div className="mb-4 flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2.5">
-                                            <span className="text-xs font-medium text-slate-500 mr-4">Coverage</span>
-                                            <span className="text-sm font-bold text-slate-800">₹{quote.coverage.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <ul className="space-y-2 mt-auto">
-                                            {quote.features.map((feature, i) => (
-                                                <li key={i} className="flex items-start gap-2.5 text-sm text-slate-600">
-                                                    <div className="w-2 h-2 rounded-full bg-indigo-300 shrink-0 mt-1.5" />
-                                                    {feature}
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
+                                        );
+                                    })}
+                                </div>
 
+                                {/* Floating Compare Action Bar */}
+                                {compareList.length === 1 && (
+                                    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-max max-w-[90vw] bg-slate-900 text-white px-6 py-4 rounded-full font-medium shadow-2xl z-[60] flex items-center gap-4 animate-in slide-in-from-bottom-5">
+                                        <div className="flex -space-x-2">
+                                            <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold border-2 border-slate-900">1</div>
+                                            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold border-2 border-slate-900 border-dashed text-slate-400">2</div>
+                                        </div>
+                                        <span className="text-sm">Select 1 more plan to compare</span>
+                                        <button onClick={() => setCompareList([])} className="p-1 hover:bg-slate-800 rounded-full ml-2">
+                                            <X className="w-4 h-4 text-slate-400" />
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Compare Side-by-Side Modal */}
+                                {compareList.length === 2 && (
+                                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                                        <div className="bg-slate-50 rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
+                                                <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                                                    <Columns className="w-5 h-5 text-indigo-600" /> Compare Plans
+                                                </h2>
+                                                <button onClick={() => setCompareList([])} className="p-2 -mr-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
+                                                    <X className="w-6 h-6" />
+                                                </button>
+                                            </div>
+
+                                            <div className="flex-1 overflow-y-auto p-2 sm:p-6">
+                                                <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
+                                                    {compareList.map((plan, idx) => (
+                                                        <div key={idx} className="flex-1 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm relative">
+                                                            <button 
+                                                                className="absolute top-4 right-4 bg-slate-100 p-1.5 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                                                onClick={() => setCompareList(compareList.filter(q => q.provider_name !== plan.provider_name))}
+                                                                title="Remove from comparison"
+                                                            >
+                                                                <X className="w-4 h-4" />
+                                                            </button>
+                                                            <h3 className="text-xl font-bold text-slate-900 mb-6 pr-8">{plan.provider_name}</h3>
+                                                            
+                                                            <div className="space-y-4 mb-6">
+                                                                <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl">
+                                                                    <p className="text-xs font-bold text-indigo-600 uppercase mb-1">Annual Premium</p>
+                                                                    <p className="text-3xl font-bold text-indigo-900">₹{plan.premium.toLocaleString('en-IN')}</p>
+                                                                </div>
+                                                                <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl">
+                                                                    <p className="text-xs font-bold text-slate-500 uppercase mb-1">Coverage</p>
+                                                                    <p className="text-2xl font-bold text-slate-900">₹{plan.coverage.toLocaleString('en-IN')}</p>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="space-y-3 mb-4">
+                                                                {plan.claim_settlement_ratio && (
+                                                                    <div className="flex items-center justify-between text-sm p-3 bg-emerald-50 rounded-lg text-emerald-800">
+                                                                        <span className="font-semibold">Claim Settlement</span>
+                                                                        <span className="font-bold">{plan.claim_settlement_ratio}%</span>
+                                                                    </div>
+                                                                )}
+                                                                {plan.network_hospitals && (
+                                                                    <div className="flex items-center justify-between text-sm p-3 bg-blue-50 rounded-lg text-blue-800 mb-4">
+                                                                        <span className="font-semibold">Network</span>
+                                                                        <span className="font-bold">{plan.network_hospitals.toLocaleString('en-IN')}+</span>
+                                                                    </div>
+                                                                )}
+
+                                                                <div className="pt-2">
+                                                                    {plan.policy_details && Object.entries(plan.policy_details).map(([key, value]) => (
+                                                                        <div key={key} className="flex items-center justify-between text-sm py-2.5 border-b border-slate-100">
+                                                                            <span className="text-slate-500">{key}</span>
+                                                                            <span className="font-semibold text-slate-800 text-right line-clamp-1" title={value}>{value}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="mt-4 space-y-4">
+                                                                <div>
+                                                                    <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-2 flex items-center gap-1">
+                                                                        <Check className="w-3.5 h-3.5" /> What's Covered
+                                                                    </p>
+                                                                    <ul className="space-y-1.5">
+                                                                        {(plan.key_inclusions || plan.features).map((inc, i) => (
+                                                                            <li key={i} className="flex items-start gap-2 text-xs text-slate-700 leading-snug">
+                                                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1.5" />
+                                                                                {inc}
+                                                                            </li>
+                                                                        ))}
+                                                                    </ul>
+                                                                </div>
+                                                                {plan.key_exclusions && plan.key_exclusions.length > 0 && (
+                                                                    <div>
+                                                                        <p className="text-xs font-bold text-red-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                                                                            <X className="w-3.5 h-3.5" /> What's NOT Covered
+                                                                        </p>
+                                                                        <ul className="space-y-1.5">
+                                                                            {plan.key_exclusions.map((exc, i) => (
+                                                                                <li key={i} className="flex items-start gap-2 text-xs text-slate-500 leading-snug">
+                                                                                    <div className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0 mt-1.5" />
+                                                                                    {exc}
+                                                                                </li>
+                                                                            ))}
+                                                                        </ul>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            
+                                                            <div className="relative group w-full mt-6">
+                                                                <button
+                                                                    disabled
+                                                                    className="w-full py-3 bg-slate-300 text-slate-500 rounded-xl font-bold cursor-not-allowed"
+                                                                >
+                                                                    Select {plan.provider_name}
+                                                                </button>
+                                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                                                    🚀 Coming in a future release
+                                                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                        </>
+                    )}
                     {!isFetchingQuotes && (
                         <div className="flex gap-4 pt-4 max-w-md mx-auto">
                             <button onClick={handleBack} className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-semibold hover:bg-slate-200 transition-colors">
                                 Back
                             </button>
-                            <button
-                                onClick={handleSavePolicy}
-                                disabled={!selectedQuote || isSaving}
-                                className="flex-[2] py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-sm"
-                            >
-                                {isSaving ? 'Processing…' : 'Buy This Policy'}
-                            </button>
+                            <div className="relative group flex-[2]">
+                                <button
+                                    disabled
+                                    className="w-full py-3 bg-slate-300 text-slate-500 rounded-xl font-semibold cursor-not-allowed"
+                                >
+                                    Buy This Policy
+                                </button>
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                    🚀 Coming in a future release
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+                                </div>
+                            </div>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* ═══ DETAILED VIEW MODAL ═══ */}
+            {detailedQuote && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                            <h2 className="text-xl font-bold text-slate-900">{detailedQuote.provider_name}</h2>
+                            <button onClick={() => setDetailedQuote(null)} className="p-2 -mr-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                            <div className="flex flex-wrap gap-4">
+                                <div className="flex-1 min-w-[200px] bg-indigo-50 border border-indigo-100 rounded-2xl p-5">
+                                    <p className="text-sm font-medium text-indigo-600 mb-1">Annual Premium</p>
+                                    <p className="text-3xl font-bold text-indigo-900">₹{detailedQuote.premium.toLocaleString('en-IN')}</p>
+                                </div>
+                                <div className="flex-1 min-w-[200px] bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                                    <p className="text-sm font-medium text-slate-500 mb-1">Coverage Amount</p>
+                                    <p className="text-3xl font-bold text-slate-900">₹{detailedQuote.coverage.toLocaleString('en-IN')}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid sm:grid-cols-2 gap-4">
+                                {detailedQuote.claim_settlement_ratio && (
+                                    <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl flex items-center justify-between">
+                                        <span className="text-sm font-semibold text-emerald-800">Claim Settlement</span>
+                                        <span className="text-lg font-bold text-emerald-700">{detailedQuote.claim_settlement_ratio}%</span>
+                                    </div>
+                                )}
+                                {detailedQuote.network_hospitals && (
+                                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-center justify-between">
+                                        <span className="text-sm font-semibold text-blue-800">Network Hospitals</span>
+                                        <span className="text-lg font-bold text-blue-700">{detailedQuote.network_hospitals.toLocaleString('en-IN')}+</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                                <div className="bg-slate-50 px-5 py-3 border-b border-slate-200">
+                                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Policy Specifics</h3>
+                                </div>
+                                <div className="divide-y divide-slate-100">
+                                    {detailedQuote.policy_details && Object.entries(detailedQuote.policy_details).map(([key, value], i) => (
+                                        <div key={key} className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 px-5 ${i % 2 === 1 ? 'bg-slate-50/50' : ''}`}>
+                                            <span className="text-sm text-slate-500 mb-1 sm:mb-0">{key}</span>
+                                            <span className="text-sm font-bold text-slate-900">{value}</span>
+                                        </div>
+                                    ))}
+                                    {!detailedQuote.policy_details && (
+                                        <div className="p-5 text-sm text-slate-400 text-center">No detailed specifications available.</div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-8">
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                                        <CheckCircle2 className="w-5 h-5 text-emerald-500" /> What's Included
+                                    </h3>
+                                    <ul className="space-y-3">
+                                        {(detailedQuote.key_inclusions && detailedQuote.key_inclusions.length > 0 ? detailedQuote.key_inclusions : detailedQuote.features).map((inc, i) => (
+                                            <li key={i} className="flex items-start gap-2.5 text-sm font-medium text-slate-700">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-2" />
+                                                {inc}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                                        <AlertCircle className="w-5 h-5 text-red-500" /> What's Excluded
+                                    </h3>
+                                    <ul className="space-y-3">
+                                        {(detailedQuote.key_exclusions || ['Standard exclusions apply', 'Pre-existing illnesses until waiting period']).map((exc, i) => (
+                                            <li key={i} className="flex items-start gap-2.5 text-sm font-medium text-slate-600">
+                                                <X className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                                                {exc}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-t border-slate-100 bg-slate-50 flex gap-4">
+                            <button
+                                onClick={() => setDetailedQuote(null)}
+                                className="flex-1 py-3.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-colors shadow-sm"
+                            >
+                                Close Details
+                            </button>
+                            <div className="relative group flex-1">
+                                <button
+                                    disabled
+                                    className="w-full py-3.5 bg-slate-300 text-slate-500 rounded-xl font-bold cursor-not-allowed"
+                                >
+                                    Select This Plan
+                                </button>
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                    🚀 Coming in a future release
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
