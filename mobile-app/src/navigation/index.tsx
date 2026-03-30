@@ -74,6 +74,18 @@ export default function RootNavigator() {
                         <Stack.Screen name="SettleUp" component={require('../screens/Expenses/SettleUp').default} />
                         <Stack.Screen name="ExpenseReports" component={require('../screens/Expenses/ExpenseReports').default} />
 
+                        {/* Bills & Payments */}
+                        <Stack.Screen name="Bills" component={require('../screens/Bills/BillsScreen').default} />
+                        <Stack.Screen name="AddBill" component={require('../screens/Bills/AddBillScreen').default} />
+
+                        {/* Insurance */}
+                        <Stack.Screen name="Insurance" component={require('../screens/Insurance/InsuranceScreen').default} />
+                        <Stack.Screen name="AddPolicy" component={require('../screens/Insurance/AddPolicyScreen').default} />
+
+                        {/* Assets */}
+                        <Stack.Screen name="Assets" component={require('../screens/Assets/AssetsScreen').default} />
+                        <Stack.Screen name="AddAsset" component={require('../screens/Assets/AddAssetScreen').default} />
+
                         {/* Games Batch 1 */}
                         <Stack.Screen name="Game_ColorChaos" component={require('../screens/games/ColorChaos').default} />
                         <Stack.Screen name="Game_MemoryMatch" component={require('../screens/games/MemoryMatch').default} />
