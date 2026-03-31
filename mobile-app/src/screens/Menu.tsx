@@ -1,14 +1,15 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { ShoppingCart, StickyNote, User, ChevronRight, LogOut, Gift } from 'lucide-react-native';
+import { ShoppingCart, StickyNote, User, ChevronRight, LogOut, Gift, Receipt, Shield, Home } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card } from '../components/ui/Card';
 
 export default function MenuScreen() {
     const navigation = useNavigation<any>();
-    const { signOut } = useAuth();
+    const { signOut, profile } = useAuth() as any;
+    const isParent = profile?.role === 'parent';
 
     const menuItems = [
         {
@@ -56,6 +57,37 @@ export default function MenuScreen() {
                     </TouchableOpacity>
                 ))}
 
+                {/* Finance Section — Parents Only */}
+                {isParent && (
+                    <>
+                        <View style={styles.divider} />
+                        <Text style={styles.sectionTitle}>💰 Finance</Text>
+                        {[
+                            { title: 'Bills & Payments', icon: Receipt, color: '#d97706', bg: '#fffbeb', route: 'Bills', comingSoon: true },
+                            { title: 'Insurance', icon: Shield, color: '#0891b2', bg: '#ecfeff', route: 'Insurance' },
+                            { title: 'Assets', icon: Home, color: '#7c3aed', bg: '#f5f3ff', route: 'Assets' },
+                        ].map((item, index) => (
+                            <TouchableOpacity
+                                key={`finance-${index}`}
+                                style={styles.menuItem}
+                                onPress={() => {
+                                    if ((item as any).comingSoon) {
+                                        Alert.alert('🚀 Coming Soon', `${item.title} is currently under development and will be available soon!`);
+                                        return;
+                                    }
+                                    navigation.navigate(item.route);
+                                }}
+                            >
+                                <View style={[styles.iconBox, { backgroundColor: item.bg }]}>
+                                    <item.icon size={24} color={item.color} />
+                                </View>
+                                <Text style={styles.menuText}>{item.title}</Text>
+                                <ChevronRight size={20} color="#cbd5e1" />
+                            </TouchableOpacity>
+                        ))}
+                    </>
+                )}
+
                 <View style={styles.divider} />
 
                 <TouchableOpacity style={styles.signOutBtn} onPress={() => signOut()}>
@@ -63,7 +95,7 @@ export default function MenuScreen() {
                     <Text style={styles.signOutText}>Sign Out</Text>
                 </TouchableOpacity>
 
-                <Text style={styles.version}>Version 2.3</Text>
+                <Text style={styles.version}>Version 3.0</Text>
             </ScrollView>
         </View>
     );

@@ -47,6 +47,15 @@ export type RootStackParamList = {
     ExpenseReports: undefined;
     Chat: { recipientId: string | null; name: string };
     VideoCall: { recipientId: string; name: string; isCaller: boolean; offer?: any };
+    // Bills & Payments
+    Bills: undefined;
+    AddBill: { category?: string } | undefined;
+    // Insurance
+    Insurance: undefined;
+    AddPolicy: { category?: string } | undefined;
+    // Assets
+    Assets: undefined;
+    AddAsset: undefined;
 };
 
 
